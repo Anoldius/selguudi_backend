@@ -14,6 +14,15 @@ from datetime import timedelta
 from pathlib import Path
 import dj_database_url
 
+import os
+
+# Njia ya kuhifadhi static files zilizokusanywa
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Ikiwa unatumia WhiteNoise kwa ajili ya static files kwenye production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
