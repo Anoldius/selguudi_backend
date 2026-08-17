@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
-    frontend_url = "https://selguudi-frontend-git-main-anoldius1.vercel.app/forgot-password"
+    frontend_url = "https://selguudi-frontend-git-main-anoldius1.vercel.app/reset-password"
     reset_url = f"{frontend_url}?token={reset_password_token.key}"
 
     email_subject = "Maombi ya Kubadilisha Nenosiri - Selguudi POS"
@@ -36,5 +36,8 @@ Selguudi POS Team.
             recipient_list=[reset_password_token.user.email],
             fail_silently=False,
         )
+        logger.info(f"Password reset email successfully sent to {reset_password_token.user.email}")
     except Exception as e:
         logger.error(f"Failed to send email to {reset_password_token.user.email}: {str(e)}")
+        # Raise Exception ili API irudishe kosa halisi badala ya kuficha
+        raise e
