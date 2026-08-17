@@ -4,24 +4,32 @@ from django_rest_passwordreset.signals import reset_password_token_created
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
-    token_key = reset_password_token.key
-    user_email = reset_password_token.user.email
+    # Link ya Frontend Vercel yenye Token
+    frontend_url = "https://selguudi-frontend-git-main-anoldius1.vercel.app/reset-password"
+    reset_url = f"{frontend_url}?token={reset_password_token.key}"
 
-    # Print kubwa ya wazi kwenye terminal
-    print("\n" + "="*60)
-    print("🔑 PASSWORD RESET TOKEN SUCCESSFUL!")
-    print(f"📧 USER EMAIL : {user_email}")
-    print(f"🎟️ TOKEN KEY  : {token_key}")
-    print("="*60 + "\n")
+    email_subject = "Maombi ya Kubadilisha Nenosiri - Selguudi POS"
+    
+    email_message = f"""
+Habari {reset_password_token.user.username},
 
-    # Tuma pia console email
-    try:
-        send_mail(
-            subject=f"Password Reset for {reset_password_token.user.username}",
-            message=f"Token yako ya ku-reset password ni: {token_key}",
-            from_email="Selguudi POS <noreply@selguudipos.com>",
-            recipient_list=[user_email],
-            fail_silently=False,
-        )
-    except Exception as e:
-        print("Mail error:", e)
+Umetuma maombi ya kubadilisha nenosiri kwenye mfumo wa Selguudi POS.
+
+Bofya kiungo hiki ili kubadilisha nenosiri lako:
+{reset_url}
+
+Token yako ya kubadilisha nenosiri ni: {reset_password_token.key}
+
+Ikiwa hukutuma maombi haya, tafadhali puuzia barua pepe hii.
+
+Wako,
+Selguudi POS Team.
+"""
+
+    send_mail(
+        subject=email_subject,
+        message=email_message,
+        from_email='Selguudi POS <noreply@selguudipos.com>',
+        recipient_list=[reset_password_token.user.email],
+        fail_silently=False,
+    )
