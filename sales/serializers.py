@@ -88,3 +88,34 @@ class SaleCreateSerializer(serializers.ModelSerializer):
             sale.save()
 
             return sale
+
+
+from rest_framework import serializers
+from .models import Customer, Debt, DebtPaymentHistory
+
+class CustomerSerializer(serializers.ModelSerializer):
+    total_debt = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Customer
+        fields = ['id', 'name', 'phone', 'total_debt', 'created_at']
+
+
+class DebtPaymentHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DebtPaymentHistory
+        fields = ['id', 'amount_paid', 'notes', 'created_at']
+
+
+class DebtSerializer(serializers.ModelSerializer):
+    customer_name = serializers.ReadOnlyField(source='customer.name')
+    customer_phone = serializers.ReadOnlyField(source='customer.phone')
+    payment_history = DebtPaymentHistorySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Debt
+        fields = [
+            'id', 'customer', 'customer_name', 'customer_phone', 
+            'total_amount', 'paid_amount', 'remaining_amount', 
+            'status', 'due_date', 'payment_history', 'created_at'
+        ]
