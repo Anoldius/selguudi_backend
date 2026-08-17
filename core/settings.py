@@ -192,7 +192,7 @@ SIMPLE_JWT = {
 }
 
 # 6. Kuruhusu Connection kutoka Frontend yoyote wakati wa Development
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Orodha ya domain rasmi za Frontend zitakazoruhusiwa
 CORS_ALLOWED_ORIGINS = [
@@ -201,6 +201,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
     # Kesho uki-deploy unaweka domain halisi: "https://selguudi.co.tz"
+    "https://selguudi-frontend.vercel.app",
+    "https://selguudi-frontend-git-main-anoldius1.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
