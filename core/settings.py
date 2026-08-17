@@ -172,12 +172,12 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # Email Configuration
-# Real Email Configuration (Gmail SMTP)
+# Real Email Configuration (Gmail SMTP kwa ajili ya Render)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False  # Hakikisha hii ipo False kwani TLS inatumia Port 587
+EMAIL_PORT = 465
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = f"Selguudi POS <{os.environ.get('EMAIL_HOST_USER', 'noreply@selguudipos.com')}>"
