@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from accounts.models import Business, User
 from inventory.models import Product
+from django.conf import settings
 
 class Sale(models.Model):
     PAYMENT_METHODS = (
@@ -48,3 +49,61 @@ class SaleItem(models.Model):
 
     def __str__(self):
         return f"{self.product.name} x {self.quantity}"
+
+
+
+class Customer(models.Model):
+    name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def total_debt(self):
+        # Inajumlisha salio la madeni yote yanayodaiwa mteja huyu
+        debts = self.debts.filter(status__in=['PENDING', 'PARTIAL'])
+        return sum(debt.remaining_amount for debt in debts)
+
+    def __str__(self):
+        return self.name
+
+
+class Debt(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Haijalipwa'),
+        ('PARTIAL', 'Imelipwa Nusu'),
+        ('PAID', 'Imelipwa Yote'),
+    )
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='debts')
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2) # Thamani ya deni lote
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00) # Kiasi kilicholipwa
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2) # Salio linalobaki
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    due_date = models.DateField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # Kokotoa salio na badilisha status kiotomatiki
+        self.remaining_amount = float(self.total_amount) - float(self.paid_amount)
+        
+        if self.remaining_amount <= 0:
+            self.remaining_amount = 0
+            self.status = 'PAID'
+        elif self.paid_amount > 0:
+            self.status = 'PARTIAL'
+        else:
+            self.status = 'PENDING'
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Deni la {self.customer.name} - TZS {self.remaining_amount}"
+
+
+class DebtPaymentHistory(models.Model):
+    debt = models.ForeignKey(Debt, on_delete=models.CASCADE, related_name='payment_history')
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2) # Kiasi kilicholipwa mara hii
+    notes = models.TextField(blank=True, null=True) # Mfano: "Kalipa kwa M-Pesa"
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Malipo TZS {self.amount_paid} - {self.debt.customer.name}"
