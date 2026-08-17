@@ -106,7 +106,6 @@ class DebtPaymentHistorySerializer(serializers.ModelSerializer):
         model = DebtPaymentHistory
         fields = ['id', 'amount_paid', 'notes', 'created_at']
 
-
 class DebtSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField(source='customer.name')
     customer_phone = serializers.ReadOnlyField(source='customer.phone')
@@ -119,3 +118,5 @@ class DebtSerializer(serializers.ModelSerializer):
             'total_amount', 'paid_amount', 'remaining_amount', 
             'status', 'due_date', 'payment_history', 'created_at'
         ]
+        # Weka hivi ili backend ijaze zenyewe zikiwa za kusoma tu:
+        read_only_fields = ['paid_amount', 'remaining_amount', 'status']
