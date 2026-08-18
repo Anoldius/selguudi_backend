@@ -172,7 +172,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # Email Configuration
-# Real Email Configuration (Gmail SMTP kwa ajili ya Render)
+# Real Email Configuration (Gmail SSL Kwa Ajili ya Render)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 465

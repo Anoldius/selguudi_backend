@@ -28,16 +28,11 @@ Wako,
 Selguudi POS Team.
 """
 
-    try:
-        send_mail(
-            subject=email_subject,
-            message=email_message,
-            from_email=None,  # Inatumia DEFAULT_FROM_EMAIL ya settings.py
-            recipient_list=[reset_password_token.user.email],
-            fail_silently=False,
-        )
-        logger.info(f"Password reset email successfully sent to {reset_password_token.user.email}")
-    except Exception as e:
-        logger.error(f"Failed to send email to {reset_password_token.user.email}: {str(e)}")
-        # Raise Exception ili API irudishe kosa halisi badala ya kuficha
-        raise e
+    # Tuma email bila kuficha makosa ili ujue exact issue ikifeli
+    send_mail(
+        subject=email_subject,
+        message=email_message,
+        from_email=None,
+        recipient_list=[reset_password_token.user.email],
+        fail_silently=False,
+    )
