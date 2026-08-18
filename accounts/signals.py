@@ -28,11 +28,11 @@ Wako,
 Selguudi POS Team.
 """
 
-    # Tuma email bila kuficha makosa ili ujue exact issue ikifeli
+    # Tuma email ikitumia recipient_list ya user aliyeomba
     send_mail(
         subject=email_subject,
         message=email_message,
-        from_email=None,
+        from_email=None,  # Inachukua DEFAULT_FROM_EMAIL iliyo kwenye settings.py
         recipient_list=[reset_password_token.user.email],
         fail_silently=False,
     )
