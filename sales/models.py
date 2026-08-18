@@ -51,8 +51,8 @@ class SaleItem(models.Model):
 
 
 class Customer(models.Model):
-    # ONGEZA BUSINESS FIELD HAPA
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='customers')
+    # Imewekwa null=True, blank=True ili kuruhusu migration bila makosa kwenye database yenye data tayari
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='customers', null=True, blank=True)
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -72,8 +72,8 @@ class Debt(models.Model):
         ('PAID', 'Imelipwa Yote'),
     )
 
-    # ONGEZA BUSINESS FIELD HAPA
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='debts')
+    # Imewekwa null=True, blank=True pia hapa kwa ajili ya usalama wa migrations
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='debts', null=True, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='debts')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2) 
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00) 
