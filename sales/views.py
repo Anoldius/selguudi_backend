@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions, filters, status, serializers  # <--- Ongeza serializers hapa
+from django.db import connection
+from rest_framework import viewsets, permissions, filters, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -9,6 +10,18 @@ from .serializers import (
     DebtSerializer, 
     DebtPaymentHistorySerializer
 )
+
+
+# Hii block inahakikisha column za business_id zipo kwenye database bila kutegemea migration iliyostuck
+def ensure_business_columns():
+    with connection.cursor() as cursor:
+        try:
+            cursor.execute("ALTER TABLE sales_customer ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
+            cursor.execute("ALTER TABLE sales_debt ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
+        except Exception:
+            pass
+
+ensure_business_columns()
 
 
 class SaleViewSet(viewsets.ModelViewSet):
