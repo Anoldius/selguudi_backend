@@ -43,7 +43,6 @@ class SaleItem(models.Model):
     total_price = models.DecimalField(max_digits=12, decimal_places=2)
 
     def save(self, *args, **kwargs):
-        # Hesabu total price ya item hii kiotomatiki
         self.total_price = self.quantity * self.unit_price
         super().save(*args, **kwargs)
 
@@ -51,14 +50,14 @@ class SaleItem(models.Model):
         return f"{self.product.name} x {self.quantity}"
 
 
-
 class Customer(models.Model):
+    # ONGEZA BUSINESS FIELD HAPA
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='customers')
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def total_debt(self):
-        # Inajumlisha salio la madeni yote yanayodaiwa mteja huyu
         debts = self.debts.filter(status__in=['PENDING', 'PARTIAL'])
         return sum(debt.remaining_amount for debt in debts)
 
@@ -73,16 +72,17 @@ class Debt(models.Model):
         ('PAID', 'Imelipwa Yote'),
     )
 
+    # ONGEZA BUSINESS FIELD HAPA
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='debts')
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='debts')
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2) # Thamani ya deni lote
-    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00) # Kiasi kilicholipwa
-    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2) # Salio linalobaki
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2) 
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00) 
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2) 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     due_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # Kokotoa salio na badilisha status kiotomatiki
         self.remaining_amount = float(self.total_amount) - float(self.paid_amount)
         
         if self.remaining_amount <= 0:
@@ -101,8 +101,8 @@ class Debt(models.Model):
 
 class DebtPaymentHistory(models.Model):
     debt = models.ForeignKey(Debt, on_delete=models.CASCADE, related_name='payment_history')
-    amount_paid = models.DecimalField(max_digits=12, decimal_places=2) # Kiasi kilicholipwa mara hii
-    notes = models.TextField(blank=True, null=True) # Mfano: "Kalipa kwa M-Pesa"
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2) 
+    notes = models.TextField(blank=True, null=True) 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
