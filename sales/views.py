@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, filters, status
+from rest_framework import viewsets, permissions, filters, status, serializers  # <--- Ongeza serializers hapa
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -23,6 +23,7 @@ class SaleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Sale.objects.filter(business=self.request.user.business).prefetch_related('items__product')
 
+
 class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -35,7 +36,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        # Tenga mteja chini ya biashara ya user
         if hasattr(user, 'business') and user.business:
             serializer.save(business=user.business)
         else:
@@ -47,12 +47,17 @@ class DebtViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # USALAMA: Onyesha Madeni ya DUKA HILI pekee!
-        return Debt.objects.filter(business=self.request.user.business).order_by('-created_at')
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            return Debt.objects.filter(business=user.business).order_by('-created_at')
+        return Debt.objects.none()
 
     def perform_create(self, serializer):
-        # Sajili deni na ulisajili chini ya business ya mtumiaji aliyelogin
-        serializer.save(business=self.request.user.business)
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(business=user.business)
+        else:
+            raise serializers.ValidationError({"detail": "User hana biashara iliyosajiliwa."})
 
     @action(detail=True, methods=['post'])
     def pay(self, request, pk=None):
