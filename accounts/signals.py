@@ -8,10 +8,9 @@ logger = logging.getLogger(__name__)
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
-    # Chukua API key kutoka Render environment variable
+    # Weka Resend API key
     resend.api_key = os.environ.get('RESEND_API_KEY')
 
-    # Link ya frontend
     frontend_url = "https://selguudi-frontend-git-main-anoldius1.vercel.app/reset-password"
     reset_url = f"{frontend_url}?token={reset_password_token.key}"
 
@@ -36,14 +35,13 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
     """
 
     try:
-        # Tuma kupitia Resend HTTP API badala ya Django SMTP
-        response = resend.Emails.send({
+        # Tuma email kupitia Resend HTTP API
+        resend.Emails.send({
             "from": "Selguudi POS <onboarding@resend.dev>",
             "to": [recipient_email],
             "subject": "Maombi ya Kubadilisha Nenosiri - Selguudi POS",
             "html": html_content,
         })
-        logger.info(f"Resend email sent successfully to {recipient_email}: {response}")
+        logger.info(f"Resend email sent successfully to {recipient_email}")
     except Exception as e:
         logger.error(f"Failed to send email via Resend to {recipient_email}: {str(e)}")
-        raise e

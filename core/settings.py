@@ -182,3 +182,6 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '').strip()
 
 DEFAULT_FROM_EMAIL = f"Selguudi POS <{EMAIL_HOST_USER}>"
+
+# Badilisha EMAIL_BACKEND iwe hii ili Django isijaribu kufungua SMTP sockets kamwe
+EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
