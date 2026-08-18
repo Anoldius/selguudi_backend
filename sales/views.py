@@ -23,18 +23,23 @@ class SaleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Sale.objects.filter(business=self.request.user.business).prefetch_related('items__product')
 
-
 class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # USALAMA: Onyesha Wateja wa DUKA HILI pekee!
-        return Customer.objects.filter(business=self.request.user.business).order_by('-created_at')
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            return Customer.objects.filter(business=user.business).order_by('-created_at')
+        return Customer.objects.none()
 
     def perform_create(self, serializer):
-        # Sajili mteja na umuunganishe na business ya mtumiaji aliyelogin
-        serializer.save(business=self.request.user.business)
+        user = self.request.user
+        # Tenga mteja chini ya biashara ya user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(business=user.business)
+        else:
+            raise serializers.ValidationError({"detail": "User hana biashara iliyosajiliwa."})
 
 
 class DebtViewSet(viewsets.ModelViewSet):
