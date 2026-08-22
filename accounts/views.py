@@ -92,7 +92,6 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# E. API ya Kuanzisha Malipo ya PesaPal (TZS 20,000)
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -106,7 +105,10 @@ class InitiateSubscriptionPaymentView(APIView):
         # 1. Pata Token kutoka PesaPal
         token = get_pesapal_token()
         if not token:
-            return Response({"error": "Imeshindikana kuunganisha na PesaPal Gateway."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha Credentials za Tanzania au Sandbox zipo sahihi."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # 2. Hifadhi Record ya Payment DB (STATUS = PENDING)
         payment = SubscriptionPayment.objects.create(
@@ -116,13 +118,13 @@ class InitiateSubscriptionPaymentView(APIView):
             status='PENDING'
         )
 
-        # 3. Sajili ama Vuta IPN Notification ID
+        # 3. Notification ID ya Sandbox
         ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
         if not ipn_id:
             ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
             ipn_id = register_pesapal_ipn(token, ipn_url) or "e86d2524-1111-2222-3333-444455556666"
 
-        # 4. Order Payload ya PesaPal
+        # 4. Order Payload ya PesaPal V3
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
@@ -132,7 +134,7 @@ class InitiateSubscriptionPaymentView(APIView):
             "notification_id": ipn_id,
             "billing_address": {
                 "email_address": request.user.email or "info@selguudi.com",
-                "phone_number": business.phone or "0700000000",
+                "phone_number": str(business.phone) if business.phone else "0700000000",
                 "first_name": request.user.first_name or business.name,
                 "last_name": "Owner"
             }
@@ -145,8 +147,7 @@ class InitiateSubscriptionPaymentView(APIView):
             payment.save()
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
-        return Response({"error": "Imeshindikana kutengeneza Link ya Malipo kutoka PesaPal."}, status=status.HTTP_400_BAD_REQUEST)
-
+        return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
 
 # F. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
