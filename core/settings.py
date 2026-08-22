@@ -190,8 +190,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
 
 
 
-# PESAPAL V3 CONFIGURATION (DEMO/SANDBOX)
 PESAPAL_CONSUMER_KEY = 'ngW+UEcnDhltUc5fxPfrCD987xMh3Lx8'
 PESAPAL_CONSUMER_SECRET = 'q27RChYs5UkypdcNYKzuUw460Dg='
-PESAPAL_BASE_URL = 'https://cyb3rpay.pesapal.com/pesapalv3'
-PESAPAL_IPN_ID = ''  # Hii tutaipata kiotomatiki au kuisajili tukishawasha IPN
+PESAPAL_BASE_URL = 'https://pay.pesapal.com/v3'
