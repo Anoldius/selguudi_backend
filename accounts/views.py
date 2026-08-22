@@ -108,14 +108,7 @@ class InitiateSubscriptionPaymentView(APIView):
         if not token:
             return Response({"error": "Imeshindikana kuunganisha na PesaPal Gateway."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 2. Sajili IPN Webhook ikibidi kama haijatengenezwa
-        ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
-        if not ipn_id:
-            # IPN URL ya mfumo wako
-            ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
-            ipn_id = register_pesapal_ipn(token, ipn_url) or ""
-
-        # 3. Hifadhi Records ya Payment kwenye DB
+        # 2. Hifadhi Record ya Payment DB (STATUS = PENDING)
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
@@ -123,7 +116,13 @@ class InitiateSubscriptionPaymentView(APIView):
             status='PENDING'
         )
 
-        # 4. Tengeneza Order Payload ya PesaPal
+        # 3. Sajili ama Vuta IPN Notification ID
+        ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
+        if not ipn_id:
+            ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
+            ipn_id = register_pesapal_ipn(token, ipn_url) or "e86d2524-1111-2222-3333-444455556666"
+
+        # 4. Order Payload ya PesaPal
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
@@ -146,7 +145,7 @@ class InitiateSubscriptionPaymentView(APIView):
             payment.save()
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
-        return Response({"error": "Imeshindikana kutengeneza Link ya Malipo."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Imeshindikana kutengeneza Link ya Malipo kutoka PesaPal."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # F. API ya Ku-handle PesaPal IPN Notification Callback

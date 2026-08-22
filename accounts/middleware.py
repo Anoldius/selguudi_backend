@@ -1,5 +1,4 @@
 from django.http import JsonResponse
-from django.utils import timezone
 
 class SubscriptionCheckMiddleware:
     def __init__(self, get_response):
@@ -11,12 +10,11 @@ class SubscriptionCheckMiddleware:
             '/api/auth/login/',
             '/api/auth/register/',
             '/api/auth/billing/status/',
-            '/api/auth/billing/initiate/',
-            '/api/auth/billing/pesapal-ipn/',
+            '/api/auth/billing/initiate/',    # <-- Hakikisha hii ipo hapa!
+            '/api/auth/billing/pesapal-ipn/', # <-- Na hii pia!
             '/admin/',
         ]
 
-        # Kama njia inaanzia na zilizoruhusiwa, ipite bila kuzuiliwa
         if any(request.path.startswith(path) for path in allowed_paths):
             return self.get_response(request)
 
@@ -30,6 +28,6 @@ class SubscriptionCheckMiddleware:
                         'error': 'SUBSCRIPTION_EXPIRED',
                         'message': 'Siku 7 za bure zimeisha. Tafadhali lipia TZS 20,000 ili kuendelea kutumia Selguudi POS.',
                         'amount_due': 20000.00
-                    }, status=402) # Status code 402 = Payment Required
+                    }, status=402)
 
         return self.get_response(request)
