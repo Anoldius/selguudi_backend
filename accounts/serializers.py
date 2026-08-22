@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Business
+from .models import Business, SubscriptionPayment
 
 User = get_user_model()
 
@@ -32,7 +32,7 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         # B. Tengeneza Owner User aliyeunganishwa na hii Business
         user = User.objects.create_user(
             username=owner_username,
-            email=owner_email, # <--- Inahifadhiwa kwenye User Model ya Django hapa
+            email=owner_email,
             password=owner_password,
             first_name=owner_full_name,
             business=business,
@@ -51,3 +51,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'role', 'phone', 'business', 'business_name', 'business_type']
+
+
+# 3. Serializer ya Hali ya Billing & Trial (New)
+class BillingStatusSerializer(serializers.Serializer):
+    business_name = serializers.CharField()
+    days_left_in_trial = serializers.IntegerField()
+    has_active_access = serializers.BooleanField()
+    trial_start_date = serializers.DateTimeField()
+    trial_end_date = serializers.DateTimeField()
+    subscription_end_date = serializers.DateTimeField(allow_null=True)
+    monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
