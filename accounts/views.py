@@ -124,18 +124,18 @@ class InitiateSubscriptionPaymentView(APIView):
             ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
             ipn_id = register_pesapal_ipn(token, ipn_url) or "e86d2524-1111-2222-3333-444455556666"
 
-        # 4. Order Payload ya PesaPal V3
+     # Order Payload ya PesaPal V3
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
             "amount": 20000.00,
-            "description": f"Malipo ya Mwezi ya Selguudi POS - {business.name}",
-            "callback_url": "https://selguudi-frontend.vercel.app/billing/success",
-            "notification_id": ipn_id,
+            "description": f"Subscription ya Selguudi POS - {business.name[:20]}",
+            "callback_url": f"https://selguudi-frontend.vercel.app/billing/success?merchant_ref={merchant_ref}",
+            "notification_id": ipn_id if ipn_id else None,
             "billing_address": {
-                "email_address": request.user.email or "info@selguudi.com",
-                "phone_number": str(business.phone) if business.phone else "0700000000",
-                "first_name": request.user.first_name or business.name,
+                "email_address": request.user.email if request.user.email else "info@selguudi.com",
+                "phone_number": "0700000000",
+                "first_name": request.user.first_name if request.user.first_name else business.name,
                 "last_name": "Owner"
             }
         }
