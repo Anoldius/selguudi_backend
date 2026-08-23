@@ -19,9 +19,9 @@ class Business(models.Model):
     is_active_subscription = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
-        # Weka siku 7 za bure kiotomatiki mara tu duka linaposajiliwa
-        if not self.trial_end_date and self.trial_start_date:
-            self.trial_end_date = self.trial_start_date + timedelta(days=7)
+        if not self.trial_end_date:
+            # Badilisha kutoka days=7 kwenda days=30
+            self.trial_end_date = timezone.now() + timedelta(days=30)
         super().save(*args, **kwargs)
 
     @property
