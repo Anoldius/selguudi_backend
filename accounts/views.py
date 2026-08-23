@@ -63,8 +63,6 @@ class UserProfileView(APIView):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-# D. API ya Kuangalia Hali ya Billing na Trial za Duka
 class BillingStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -78,16 +76,16 @@ class BillingStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Kama duka lilikuwa kwenye trial ya siku 7 za zamani, liongezee hadi siku 30 kuanzia tarehe liliposajiliwa
+        # Hakikisha akaunti iliyosajiliwa zamani inapata siku 30 kuanzia tarehe ya usajili wake
         if not business.subscription_end_date and business.trial_start_date:
             expected_trial_end = business.trial_start_date + timedelta(days=30)
-            if business.trial_end_date < expected_trial_end:
+            if business.trial_end_date != expected_trial_end:
                 business.trial_end_date = expected_trial_end
                 business.save()
 
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial,
+            'days_left_in_trial': business.days_left_in_trial, # Inarudisha siku halisi zilizobaki (mfano 29, 28, nk.)
             'has_active_access': business.has_active_access,
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,

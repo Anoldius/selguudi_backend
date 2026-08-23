@@ -20,29 +20,38 @@ class Business(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.trial_end_date:
-            # Badilisha kutoka days=7 kwenda days=30
-            self.trial_end_date = timezone.now() + timedelta(days=30)
+            # Weka siku 30 za trial wakati wa usajili
+            self.trial_end_date = self.trial_start_date + timedelta(days=30)
         super().save(*args, **kwargs)
 
     @property
     def days_left_in_trial(self):
-        """Inarudisha idadi ya siku zilizobaki za trial"""
+        """Inarudisha idadi ya siku halisi zilizobaki za trial kuanzia leo"""
         if not self.trial_end_date:
             return 0
+            
         now = timezone.now()
+        
+        # Kama ameshalipia subscription na haijaisha, trial countdown haina maana tena
+        if self.subscription_end_date and self.subscription_end_date > now:
+            return 0
+            
         if now >= self.trial_end_date:
             return 0
-        return (self.trial_end_date - now).days + 1
+            
+        # Tunatumia time_left kupata siku halisi
+        time_left = self.trial_end_date - now
+        return time_left.days + (1 if time_left.seconds > 0 else 0)
 
     @property
     def has_active_access(self):
         """Inakagua kama bado yupo kwenye Trial au amelipia Subscription"""
         now = timezone.now()
-        
-        # 1. Bado yupo ndani ya Siku 7 za trial
+
+        # 1. Bado yupo ndani ya Siku 30 za trial
         if self.trial_end_date and now <= self.trial_end_date:
             return True
-            
+
         # 2. Amelipia na tarehe ya subscription haijaisha
         if self.subscription_end_date and now <= self.subscription_end_date:
             return True
