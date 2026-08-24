@@ -8,6 +8,7 @@ from .serializers import CategorySerializer, ProductSerializer
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Ongeza pia hapa ili categories zote zionekane
 
     def get_queryset(self):
         user = self.request.user
@@ -24,6 +25,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    # *** ZIMA PAGINATION ILI BIDHAA ZOTE ZIONEKANE ***
+    pagination_class = None
+    
     # Kusaidia Kusearch na Ku-filter bidhaa kwa haraka
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['category', 'unit', 'is_active']
@@ -32,13 +36,11 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Hakikisha user ana business kabla ya ku-filter
         if hasattr(user, 'business') and user.business:
             return Product.objects.filter(business=user.business).order_by('-id')
         return Product.objects.none()
 
     def perform_create(self, serializer):
-        # Mhimu: Ambatanisha duka (business) la mtumiaji aliyelogin otomatiki!
         user = self.request.user
         if hasattr(user, 'business') and user.business:
             serializer.save(business=user.business)
