@@ -105,3 +105,32 @@ class DebtPaymentHistory(models.Model):
 
     def __str__(self):
         return f"Malipo TZS {self.amount_paid} - {self.debt.customer.name}"
+
+
+class Expense(models.Model):
+    CATEGORY_CHOICES = (
+        ('UTILITIES', 'Umeme / Maji'),
+        ('FOOD', 'Chakula / Vinywaji'),
+        ('TRANSPORT', 'Usafiri / Nauli'),
+        ('SUPPLIES', 'Vifaa vya Ofisi'),
+        ('OTHER', 'Mengineyo'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='expenses')
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_recorded')
+    
+    title = models.CharField(max_length=255, help_text="Mfano: LUKU ya dukani, Chakula cha mchana")
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='OTHER')
+    description = models.TextField(blank=True, null=True, help_text="Maelezo fupi ya ziada")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - TZS {self.amount}"        
+
+

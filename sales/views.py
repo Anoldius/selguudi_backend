@@ -3,12 +3,13 @@ from rest_framework import viewsets, permissions, filters, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Sale, Customer, Debt, DebtPaymentHistory
+from .models import Sale, Customer, Debt, DebtPaymentHistory, Expense
 from .serializers import (
     SaleCreateSerializer, 
     CustomerSerializer, 
     DebtSerializer, 
-    DebtPaymentHistorySerializer
+    DebtPaymentHistorySerializer,
+    ExpenseSerializer
 )
 
 
@@ -18,6 +19,7 @@ def ensure_business_columns():
         try:
             cursor.execute("ALTER TABLE sales_customer ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
             cursor.execute("ALTER TABLE sales_debt ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
+            cursor.execute("ALTER TABLE sales_expense ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
         except Exception:
             pass
 
@@ -100,3 +102,26 @@ class DebtViewSet(viewsets.ModelViewSet):
             'remaining_amount': debt.remaining_amount,
             'status': debt.status
         }, status=status.HTTP_200_OK)
+
+
+# 4. ViewSet ya Matumizi ya Duka (Expense Management)
+class ExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class = ExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            return Expense.objects.filter(business=user.business).order_by('-created_at')
+        return Expense.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(
+                business=user.business,
+                recorded_by=user
+            )
+        else:
+            raise serializers.ValidationError({"detail": "User hana biashara iliyosajiliwa."})

@@ -2,7 +2,8 @@ import uuid
 from django.db import transaction
 from rest_framework import serializers
 from inventory.models import Product
-from .models import Sale, SaleItem
+from .models import Sale, SaleItem, Expense
+
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -120,3 +121,12 @@ class DebtSerializer(serializers.ModelSerializer):
         ]
         # Weka hivi ili backend ijaze zenyewe zikiwa za kusoma tu:
         read_only_fields = ['paid_amount', 'remaining_amount', 'status']
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.ReadOnlyField(source='recorded_by.username')
+
+    class Meta:
+        model = Expense
+        fields = ['id', 'title', 'amount', 'category', 'description', 'recorded_by_name', 'created_at']
+
