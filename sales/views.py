@@ -13,15 +13,28 @@ from .serializers import (
 )
 
 
-# Hii block inahakikisha column za business_id zipo kwenye database bila kutegemea migration iliyostuck
+# Hii block inahakikisha column na table ya sales_expense zipo kwenye database bila kutegemea migration iliyostuck
 def ensure_business_columns():
     with connection.cursor() as cursor:
         try:
             cursor.execute("ALTER TABLE sales_customer ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
             cursor.execute("ALTER TABLE sales_debt ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
-            cursor.execute("ALTER TABLE sales_expense ADD COLUMN IF NOT EXISTS business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE;")
-        except Exception:
-            pass
+            
+            # Unda table ya sales_expense kiotomatiki ikiwa haipo kule PostgreSQL
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sales_expense (
+                    id UUID PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    amount NUMERIC(12, 2) NOT NULL,
+                    category VARCHAR(50) NOT NULL DEFAULT 'OTHER',
+                    description TEXT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE,
+                    recorded_by_id UUID REFERENCES accounts_user(id) ON DELETE SET NULL
+                );
+            """)
+        except Exception as e:
+            print("Database setup error:", e)
 
 ensure_business_columns()
 

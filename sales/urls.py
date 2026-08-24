@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import SaleViewSet, CustomerViewSet, DebtViewSet, ExpenseViewSet
 
 router = DefaultRouter()
-router.register(r'transactions', SaleViewSet, basename='sale')
+router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'debts', DebtViewSet, basename='debt')
 router.register(r'expenses', ExpenseViewSet, basename='expense')
