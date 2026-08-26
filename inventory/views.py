@@ -1,8 +1,11 @@
 from rest_framework import viewsets, permissions, filters, status, serializers
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Sum, F, FloatField
 from .models import Category, Product
 from .serializers import CategorySerializer, ProductSerializer
+
 
 # 1. ViewSet ya Category
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -54,3 +57,37 @@ class ProductViewSet(viewsets.ModelViewSet):
             raise serializers.ValidationError({
                 "detail": "Mtumiaji huyu hajahusianishwa na duka/biashara yoyote."
             })
+
+    # CUSTOM ENDPOINT: /api/inventory/products/summary/
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def summary(self, request):
+        user = request.user
+        if not (hasattr(user, 'business') and user.business):
+            return Response({
+                'total_current_cost': 0.0,
+                'total_potential_retail': 0.0,
+                'expected_stock_profit': 0.0,
+                'total_products_count': 0
+            }, status=status.HTTP_200_OK)
+
+        queryset = self.get_queryset()
+
+        # 1. Thamani ya Stoko ya Sasa kwa Bei ya Kununulia (Cost Price * Quantity)
+        cost_sum = queryset.aggregate(
+            total=Sum(F('quantity') * F('buying_price'), output_field=FloatField())
+        )['total'] or 0.0
+
+        # 2. Thamani Tarajiwa ya Mauzo kwa Bei ya Kuuzia (Selling Price * Quantity)
+        retail_sum = queryset.aggregate(
+            total=Sum(F('quantity') * F('selling_price'), output_field=FloatField())
+        )['total'] or 0.0
+
+        # 3. Kadirio la Faida Kwenye Stoko
+        expected_profit = retail_sum - cost_sum
+
+        return Response({
+            'total_current_cost': round(cost_sum, 2),
+            'total_potential_retail': round(retail_sum, 2),
+            'expected_stock_profit': round(expected_profit, 2),
+            'total_products_count': queryset.count()
+        }, status=status.HTTP_200_OK)
