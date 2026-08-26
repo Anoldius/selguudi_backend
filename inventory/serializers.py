@@ -3,10 +3,15 @@ from .models import Category, Product
 
 # 1. Serializer ya Categories
 class CategorySerializer(serializers.ModelSerializer):
+    products_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ['id', 'name', 'created_at']
+        fields = ['id', 'name', 'created_at', 'products_count']
         read_only_fields = ['id', 'created_at']
+
+    def get_products_count(self, obj):
+        return obj.products.filter(is_active=True).count()
 
     def create(self, validated_data):
         user = self.context['request'].user
@@ -33,7 +38,6 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def validate_barcode(self, value):
-        # Kama barcode imeandikwa tupu, iweke None ili isigongane na Unique constraint database-ni
         if value is not None and value.strip() == '':
             return None
         return value

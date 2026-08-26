@@ -1,6 +1,29 @@
 import uuid
-from django.db import models
+from django.db import models, connection
 from accounts.models import Business
+
+# Auto-setup ya Table & Columns kuzuia DB errors Render
+def ensure_category_table():
+    with connection.cursor() as cursor:
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS inventory_category (
+                    id UUID PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    business_id UUID REFERENCES accounts_business(id) ON DELETE CASCADE,
+                    CONSTRAINT inventory_category_business_id_name_key UNIQUE (business_id, name)
+                );
+            """)
+            cursor.execute("""
+                ALTER TABLE inventory_product 
+                ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES inventory_category(id) ON DELETE SET NULL;
+            """)
+        except Exception as e:
+            print("Category DB Setup Note:", e)
+
+ensure_category_table()
+
 
 class Category(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -34,7 +57,6 @@ class Product(models.Model):
     buying_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     selling_price = models.DecimalField(max_digits=12, decimal_places=2)
     
-    # Tunatumia Decimal (e.g. 0.50 kg ya bucha au mchezo wa mche)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     unit = models.CharField(max_length=20, choices=UNITS, default='pcs')
     

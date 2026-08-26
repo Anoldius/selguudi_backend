@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, filters, status
+from rest_framework import viewsets, permissions, filters, status, serializers
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Category, Product
@@ -8,16 +8,22 @@ from .serializers import CategorySerializer, ProductSerializer
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = None  # Ongeza pia hapa ili categories zote zionekane
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, 'business') and user.business:
-            return Category.objects.filter(business=user.business)
+            return Category.objects.filter(business=user.business).order_by('name')
         return Category.objects.none()
 
     def perform_create(self, serializer):
-        serializer.save(business=self.request.user.business)
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(business=user.business)
+        else:
+            raise serializers.ValidationError({
+                "detail": "Mtumiaji huyu hajahusianishwa na duka/biashara yoyote."
+            })
 
 
 # 2. ViewSet ya Product (Bidhaa na Stoko)
@@ -25,7 +31,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticated]
     
-    # *** ZIMA PAGINATION ILI BIDHAA ZOTE ZIONEKANE ***
+    # ZIMA PAGINATION ILI BIDHAA ZOTE ZIONEKANE
     pagination_class = None
     
     # Kusaidia Kusearch na Ku-filter bidhaa kwa haraka
@@ -37,7 +43,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, 'business') and user.business:
-            return Product.objects.filter(business=user.business).order_by('-id')
+            return Product.objects.filter(business=user.business).order_by('-created_at')
         return Product.objects.none()
 
     def perform_create(self, serializer):
