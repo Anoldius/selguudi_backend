@@ -2,17 +2,27 @@ import uuid
 from django.db import transaction
 from rest_framework import serializers
 from inventory.models import Product
-from .models import Sale, SaleItem, Expense
-
+from .models import Sale, SaleItem, Expense, Customer, Debt, DebtPaymentHistory
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
     product_id = serializers.UUIDField()
     product_name = serializers.ReadOnlyField(source='product.name')
+    category_name = serializers.ReadOnlyField(source='product.category.name', default='Bila Kundi')
+    buying_price = serializers.ReadOnlyField(source='product.buying_price', default=0.00)
 
     class Meta:
         model = SaleItem
-        fields = ['id', 'product_id', 'product_name', 'quantity', 'unit_price', 'total_price']
+        fields = [
+            'id', 
+            'product_id', 
+            'product_name', 
+            'category_name', 
+            'buying_price', 
+            'quantity', 
+            'unit_price', 
+            'total_price'
+        ]
         read_only_fields = ['id', 'unit_price', 'total_price']
 
 
@@ -32,12 +42,9 @@ class SaleCreateSerializer(serializers.ModelSerializer):
         if not items_data:
             raise serializers.ValidationError({"items": "Hauwezi kukamilisha muamala bila kuweka bidhaa angalau moja."})
 
-        # DB Transaction ya Atomic - Kila kitu kinakamilika kwa pamoja au kuzuiliwa kwa pamoja
         with transaction.atomic():
-            # A. Tengeneza Receipt Number ya kipekee (mfano: SEL-20260729-ABCD)
             receipt_no = f"SEL-{uuid.uuid4().hex[:8].upper()}"
 
-            # B. Tengeneza Header ya Sale
             sale = Sale.objects.create(
                 business=business,
                 cashier=user,
@@ -48,34 +55,28 @@ class SaleCreateSerializer(serializers.ModelSerializer):
 
             calculated_total = 0.00
 
-            # C. Pitia kila Item, Kagua Stoko, na Ukate Stoko
             for item_data in items_data:
                 product_id = item_data['product_id']
                 qty_to_buy = item_data['quantity']
 
                 try:
-                    # Hakikisha bidhaa ni ya DUKA HILI tu
                     product = Product.objects.select_for_update().get(id=product_id, business=business)
                 except Product.DoesNotExist:
                     raise serializers.ValidationError({
                         "product": f"Bidhaa yenye ID {product_id} haipo kwenye duka hili."
                     })
 
-                # Validations za Stoko
                 if product.quantity < qty_to_buy:
                     raise serializers.ValidationError({
                         "stock_error": f"Stoko haitoshi kwa bidhaa '{product.name}'. Iliyopo ni {product.quantity} {product.unit}, lakini unajaribu kuuza {qty_to_buy}."
                     })
 
-                # 1. Kata Stoko Kiotomatiki
                 product.quantity -= qty_to_buy
                 product.save()
 
-                # 2. Hesabu Bei ya Mauzo
                 item_total = qty_to_buy * product.selling_price
                 calculated_total += float(item_total)
 
-                # 3. Hifadhi SaleItem
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
@@ -84,15 +85,11 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                     total_price=item_total
                 )
 
-            # D. Hifadhi Jumla ya Pesa kwenye Sale
             sale.total_amount = calculated_total
             sale.save()
 
             return sale
 
-
-from rest_framework import serializers
-from .models import Customer, Debt, DebtPaymentHistory
 
 class CustomerSerializer(serializers.ModelSerializer):
     total_debt = serializers.ReadOnlyField()
@@ -107,6 +104,7 @@ class DebtPaymentHistorySerializer(serializers.ModelSerializer):
         model = DebtPaymentHistory
         fields = ['id', 'amount_paid', 'notes', 'created_at']
 
+
 class DebtSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField(source='customer.name')
     customer_phone = serializers.ReadOnlyField(source='customer.phone')
@@ -119,7 +117,6 @@ class DebtSerializer(serializers.ModelSerializer):
             'total_amount', 'paid_amount', 'remaining_amount', 
             'status', 'due_date', 'payment_history', 'created_at'
         ]
-        # Weka hivi ili backend ijaze zenyewe zikiwa za kusoma tu:
         read_only_fields = ['paid_amount', 'remaining_amount', 'status']
 
 
@@ -129,4 +126,3 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = ['id', 'title', 'amount', 'category', 'description', 'recorded_by_name', 'created_at']
-
