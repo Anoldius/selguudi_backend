@@ -10,6 +10,9 @@ class SaleItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     category_name = serializers.ReadOnlyField(source='product.category.name', default='Bila Kundi')
     buying_price = serializers.ReadOnlyField(source='product.buying_price', default=0.00)
+    
+    # Inaruhusu kupokea unit_price ya custom kutoka Frontend kama muuzaji amepunguza bei
+    unit_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
 
     class Meta:
         model = SaleItem
@@ -23,7 +26,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
             'unit_price', 
             'total_price'
         ]
-        read_only_fields = ['id', 'unit_price', 'total_price']
+        read_only_fields = ['id', 'total_price']
 
 
 class SaleCreateSerializer(serializers.ModelSerializer):
@@ -71,17 +74,23 @@ class SaleCreateSerializer(serializers.ModelSerializer):
                         "stock_error": f"Stoko haitoshi kwa bidhaa '{product.name}'. Iliyopo ni {product.quantity} {product.unit}, lakini unajaribu kuuza {qty_to_buy}."
                     })
 
+                # Chagua custom unit_price iliyotumwa kutoka POS au tumia ya stoko
+                custom_unit_price = item_data.get('unit_price', product.selling_price)
+
+                # 1. Kata Stoko Kiotomatiki
                 product.quantity -= qty_to_buy
                 product.save()
 
-                item_total = qty_to_buy * product.selling_price
+                # 2. Hesabu Bei ya Mauzo kwa kutumia custom_unit_price
+                item_total = qty_to_buy * custom_unit_price
                 calculated_total += float(item_total)
 
+                # 3. Hifadhi SaleItem kwa bei iliyokubaliwa
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
                     quantity=qty_to_buy,
-                    unit_price=product.selling_price,
+                    unit_price=custom_unit_price,
                     total_price=item_total
                 )
 
