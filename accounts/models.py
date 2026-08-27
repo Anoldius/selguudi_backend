@@ -8,7 +8,9 @@ class Business(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     business_type = models.CharField(max_length=50, default='retail')
-    phone = models.CharField(max_length=20, unique=True)
+    
+    # TUMETOA unique=True HAPA ILI KURUHUSUS NAMBA MOJA KUSISIMAMIA MADUKA MENGI
+    phone = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)  
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -39,7 +41,6 @@ class Business(models.Model):
         if now >= self.trial_end_date:
             return 0
             
-        # Tunatumia time_left kupata siku halisi
         time_left = self.trial_end_date - now
         return time_left.days + (1 if time_left.seconds > 0 else 0)
 
