@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 
-from rest_framework import status, generics, permissions
+from rest_framework import status, generics, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -18,11 +18,15 @@ from .serializers import (
 from .models import Business, SubscriptionPayment
 from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_ipn
 
-# A. Custom JWT Token Serializer ili kurudisha na taarifa za Business/Role wakati wa Login
+# A. Custom JWT Token Serializer ya Login inayotumia Username na Password
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+
     def validate(self, attrs):
         data = super().validate(attrs)
-        # Ongeza data za ziada kwenye Response ya Login
+        
+        # Taarifa za mtumiaji na biashara anayoimiliki/anayoifanyia kazi
         data['user_id'] = str(self.user.id)
         data['username'] = self.user.username
         data['role'] = self.user.role
@@ -38,9 +42,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
-# Class ndogo ya ku-limit Login Request
+# Class ndogo ya ku-limit Login Request kwa sekunde/dakika
 class LoginRateThrottle(AnonRateThrottle):
-    rate = '5/minute'
+    rate = '10/minute'
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -63,6 +67,8 @@ class UserProfileView(APIView):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+# D. API ya Kuangalia Hali ya Billing & Trial
 class BillingStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -76,7 +82,6 @@ class BillingStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Hakikisha akaunti iliyosajiliwa zamani inapata siku 30 kuanzia tarehe ya usajili wake
         if not business.subscription_end_date and business.trial_start_date:
             expected_trial_end = business.trial_start_date + timedelta(days=30)
             if business.trial_end_date != expected_trial_end:
@@ -85,7 +90,7 @@ class BillingStatusView(APIView):
 
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial, # Inarudisha siku halisi zilizobaki (mfano 29, 28, nk.)
+            'days_left_in_trial': business.days_left_in_trial,
             'has_active_access': business.has_active_access,
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,
@@ -97,6 +102,7 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# E. API ya Kuanzisha Malipo ya PesaPal
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -107,15 +113,13 @@ class InitiateSubscriptionPaymentView(APIView):
 
         merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
 
-        # 1. Pata Token kutoka PesaPal
         token = get_pesapal_token()
         if not token:
             return Response(
-                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha Credentials za Tanzania au Sandbox zipo sahihi."}, 
+                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha Credentials zipo sahihi."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Hifadhi Record ya Payment DB (STATUS = PENDING)
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
@@ -123,13 +127,11 @@ class InitiateSubscriptionPaymentView(APIView):
             status='PENDING'
         )
 
-        # 3. Notification ID ya Sandbox
         ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
         if not ipn_id:
             ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
             ipn_id = register_pesapal_ipn(token, ipn_url) or "e86d2524-1111-2222-3333-444455556666"
 
-     # Order Payload ya PesaPal V3
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
@@ -139,7 +141,7 @@ class InitiateSubscriptionPaymentView(APIView):
             "notification_id": ipn_id if ipn_id else None,
             "billing_address": {
                 "email_address": request.user.email if request.user.email else "info@selguudi.com",
-                "phone_number": "0700000000",
+                "phone_number": request.user.phone if request.user.phone else "0700000000",
                 "first_name": request.user.first_name if request.user.first_name else business.name,
                 "last_name": "Owner"
             }
@@ -153,6 +155,7 @@ class InitiateSubscriptionPaymentView(APIView):
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
         return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
+
 
 # F. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
@@ -169,7 +172,6 @@ class PesaPalIPNCallbackView(APIView):
                 payment.pesapal_order_tracking_id = pesapal_tracking_id
                 payment.save()
 
-                # Ongeza siku 30 za Subscription kwenye Duka
                 business = payment.business
                 now = timezone.now()
                 start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now

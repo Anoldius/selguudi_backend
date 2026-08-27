@@ -6,11 +6,10 @@ User = get_user_model()
 
 # 1. Serializer ya Kuandikisha Biashara Mpya pamoja na Mmiliki wake
 class RegisterBusinessSerializer(serializers.ModelSerializer):
-    # Field za ziada za Mmiliki (Owner)
     owner_username = serializers.CharField(write_only=True)
-    owner_email = serializers.EmailField(write_only=True, required=True) 
+    owner_email = serializers.EmailField(write_only=True, required=False, allow_blank=True) 
     owner_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
-    owner_full_name = serializers.CharField(write_only=True, required=False)
+    owner_full_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Business
@@ -19,17 +18,22 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
             'owner_username', 'owner_email', 'owner_password', 'owner_full_name'
         ]
 
+    def validate_owner_username(self, value):
+        # Username pekee ndiyo inapaswa kuwa Unique!
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Username hii tayari inatumiwa. Tafadhali chagua username nyingine.")
+        return value
+
     def create(self, validated_data):
-        # Tenga data za owner na za business
         owner_username = validated_data.pop('owner_username')
-        owner_email = validated_data.pop('owner_email')
+        owner_email = validated_data.pop('owner_email', '')
         owner_password = validated_data.pop('owner_password')
         owner_full_name = validated_data.pop('owner_full_name', '')
 
-        # A. Tengeneza Business kwanza
+        # A. Tengeneza Business
         business = Business.objects.create(**validated_data)
 
-        # B. Tengeneza Owner User aliyeunganishwa na hii Business
+        # B. Tengeneza Owner User
         user = User.objects.create_user(
             username=owner_username,
             email=owner_email,
@@ -53,7 +57,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'role', 'phone', 'business', 'business_name', 'business_type']
 
 
-# 3. Serializer ya Hali ya Billing & Trial (New)
+# 3. Serializer ya Hali ya Billing & Trial
 class BillingStatusSerializer(serializers.Serializer):
     business_name = serializers.CharField()
     days_left_in_trial = serializers.IntegerField()
