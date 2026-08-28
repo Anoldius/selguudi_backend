@@ -13,7 +13,9 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .serializers import (
     RegisterBusinessSerializer, 
     UserProfileSerializer, 
-    BillingStatusSerializer
+    BillingStatusSerializer,
+    VerifyPasswordSerializer,
+    BusinessPermissionsSerializer
 )
 from .models import Business, SubscriptionPayment
 from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_ipn
@@ -34,10 +36,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['business_name'] = self.user.business.name if self.user.business else None
         data['business_type'] = self.user.business.business_type if self.user.business else None
         
-        # Siku zilizobaki na Hali ya Trial
+        # Siku zilizobaki na Hali ya Trial pamoja na Haki za Cashier (Permissions Toggles)
         if self.user.business:
             data['days_left_in_trial'] = self.user.business.days_left_in_trial
             data['has_active_access'] = self.user.business.has_active_access
+            data['permissions'] = {
+                'show_profit_to_cashier': self.user.business.show_profit_to_cashier,
+                'allow_cashier_debts': self.user.business.allow_cashier_debts,
+                'allow_cashier_custom_price': self.user.business.allow_cashier_custom_price,
+                'show_buying_price_to_cashier': self.user.business.show_buying_price_to_cashier,
+            }
             
         return data
 
@@ -102,7 +110,54 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# E. API ya Kuanzisha Malipo ya PesaPal
+# E. API YA KUHAKIKI PASSWORD KABLA YA KUINGIA SETTINGS (RE-AUTHENTICATION)
+class VerifyPasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = VerifyPasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            return Response({
+                "success": True, 
+                "message": "Nenosiri limehakikiwa kikamilifu!"
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# F. API YA KUANGALIA NA KUBADILISHA MIPANGILIO YA HAKI ZA CASHIER
+class BusinessPermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = BusinessPermissionsSerializer(business)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        if request.user.role != 'owner':
+            return Response({
+                "error": "Hauna mamlaka ya kubadilisha mipangilio ya biashara."
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = BusinessPermissionsSerializer(business, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "message": "Mipangilio ya duka imehifadhiwa kikamilifu!",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# G. API ya Kuanzisha Malipo ya PesaPal
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -157,7 +212,7 @@ class InitiateSubscriptionPaymentView(APIView):
         return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# F. API ya Ku-handle PesaPal IPN Notification Callback
+# H. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 

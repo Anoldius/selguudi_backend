@@ -6,7 +6,9 @@ from .views import (
     UserProfileView,
     BillingStatusView,
     InitiateSubscriptionPaymentView,
-    PesaPalIPNCallbackView
+    PesaPalIPNCallbackView,
+    VerifyPasswordView,
+    BusinessPermissionsView
 )
 
 urlpatterns = [
@@ -15,6 +17,10 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('profile/', UserProfileView.as_view(), name='user_profile'),
     
+    # Security & Business Permissions Endpoints
+    path('verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
+    path('business-permissions/', BusinessPermissionsView.as_view(), name='business_permissions'),
+
     # Billing & Subscription Endpoints
     path('billing/status/', BillingStatusView.as_view(), name='billing_status'),
     path('billing/initiate/', InitiateSubscriptionPaymentView.as_view(), name='initiate_payment'),

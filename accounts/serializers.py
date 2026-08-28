@@ -1,14 +1,31 @@
+import re
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Business, SubscriptionPayment
 
 User = get_user_model()
 
+
+# 0. FUNCTION YA KUHAKIKI STRONG PASSWORD (COMPLEXITY CHECK)
+def validate_strong_password(value):
+    if len(value) < 8:
+        raise serializers.ValidationError("Nenosiri lazima liwe na angalau herufi 8 au zaidi.")
+    if not re.search(r'[A-Z]', value):
+        raise serializers.ValidationError("Nenosiri lazima liwe na angalau herufi kubwa moja (A-Z).")
+    if not re.search(r'[a-z]', value):
+        raise serializers.ValidationError("Nenosiri lazima liwe na angalau herufi ndogo moja (a-z).")
+    if not re.search(r'[0-9]', value):
+        raise serializers.ValidationError("Nenosiri lazima liwe na angalau namba moja (0-9).")
+    if not re.search(r'[@$!%*?&_#^()-+={}]', value):
+        raise serializers.ValidationError("Nenosiri lazima liwe na angalau alama maalum (mfano: @, #, $, %, !).")
+    return value
+
+
 # 1. Serializer ya Kuandikisha Biashara Mpya pamoja na Mmiliki wake
 class RegisterBusinessSerializer(serializers.ModelSerializer):
     owner_username = serializers.CharField(write_only=True)
     owner_email = serializers.EmailField(write_only=True, required=False, allow_blank=True) 
-    owner_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+    owner_password = serializers.CharField(write_only=True, style={'input_type': 'password'}, validators=[validate_strong_password])
     owner_full_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
@@ -66,3 +83,26 @@ class BillingStatusSerializer(serializers.Serializer):
     trial_end_date = serializers.DateTimeField()
     subscription_end_date = serializers.DateTimeField(allow_null=True)
     monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+
+# 4. SERIALIZER YA KUHAKIKI PASSWORD (VERIFY PASSWORD BEFORE SETTINGS ENTRY)
+class VerifyPasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, required=True)
+
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Nenosiri uliloingiza si sahihi. Imeshindikana kufungua Mipangilio.")
+        return value
+
+
+# 5. SERIALIZER YA CUSHANGE/READ BUSINESS PERMISSIONS TOGGLES
+class BusinessPermissionsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Business
+        fields = [
+            'show_profit_to_cashier',
+            'allow_cashier_debts',
+            'allow_cashier_custom_price',
+            'show_buying_price_to_cashier'
+        ]

@@ -9,7 +9,7 @@ class Business(models.Model):
     name = models.CharField(max_length=255)
     business_type = models.CharField(max_length=50, default='retail')
     
-    # TUMETOA unique=True HAPA ILI KURUHUSUS NAMBA MOJA KUSISIMAMIA MADUKA MENGI
+    # phone ikiwa bila unique=True kuruhusu namba moja kusimamia maduka mengi
     phone = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)  
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,6 +19,12 @@ class Business(models.Model):
     trial_end_date = models.DateTimeField(blank=True, null=True)
     subscription_end_date = models.DateTimeField(blank=True, null=True)
     is_active_subscription = models.BooleanField(default=True)
+
+    # MIPANGILIO YA HAKI ZA CASHIER (BUSINESS PERMISSIONS TOGGLES)
+    show_profit_to_cashier = models.BooleanField(default=False)
+    allow_cashier_debts = models.BooleanField(default=True)
+    allow_cashier_custom_price = models.BooleanField(default=True)
+    show_buying_price_to_cashier = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if not self.trial_end_date:
