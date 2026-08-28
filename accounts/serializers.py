@@ -85,24 +85,78 @@ class BillingStatusSerializer(serializers.Serializer):
     monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
-# 4. SERIALIZER YA KUHAKIKI PASSWORD (VERIFY PASSWORD BEFORE SETTINGS ENTRY)
-class VerifyPasswordSerializer(serializers.Serializer):
-    password = serializers.CharField(write_only=True, required=True)
+# 4. SERIALIZER YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
+class VerifySettingsPasswordSerializer(serializers.Serializer):
+    settings_password = serializers.CharField(write_only=True, required=True)
 
-    def validate_password(self, value):
+    def validate_settings_password(self, value):
         user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError("Nenosiri uliloingiza si sahihi. Imeshindikana kufungua Mipangilio.")
+        business = getattr(user, 'business', None)
+
+        if not business:
+            raise serializers.ValidationError("Hauna duka lililounganishwa na akaunti hii.")
+
+        if not business.settings_password:
+            raise serializers.ValidationError("Duka hili halijatengeneza Nenosiri la Mipangilio. Tafadhali tengeneza kwanza.")
+
+        if not business.check_settings_password(value):
+            raise serializers.ValidationError("Nenosiri la Mipangilio uliloingiza si sahihi.")
+        
         return value
 
 
-# 5. SERIALIZER YA CUSHANGE/READ BUSINESS PERMISSIONS TOGGLES
+# 5. SERIALIZER YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
+class SetSettingsPasswordSerializer(serializers.Serializer):
+    new_settings_password = serializers.CharField(
+        write_only=True, 
+        required=True, 
+        validators=[validate_strong_password]
+    )
+    confirm_settings_password = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        if attrs['new_settings_password'] != attrs['confirm_settings_password']:
+            raise serializers.ValidationError({"confirm_settings_password": "Nenosiri jipya na kithibitisho havifanani."})
+        return attrs
+
+
+# 6. SERIALIZER YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU (RESET FORGOTTEN SETTINGS PASSWORD)
+class ResetSettingsPasswordSerializer(serializers.Serializer):
+    account_login_password = serializers.CharField(write_only=True, required=True)
+    new_settings_password = serializers.CharField(
+        write_only=True, 
+        required=True, 
+        validators=[validate_strong_password]
+    )
+    confirm_settings_password = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+
+        # A. Hakiki Account Login Password kwanza kama mtumiaji kweli ndiye mmiliki
+        if not user.check_password(attrs['account_login_password']):
+            raise serializers.ValidationError({"account_login_password": "Nenosiri lako la Account Login si sahihi."})
+
+        # B. Hakiki kama password mpya za Settings zinafanana
+        if attrs['new_settings_password'] != attrs['confirm_settings_password']:
+            raise serializers.ValidationError({"confirm_settings_password": "Nenosiri jipya na kithibitisho havifanani."})
+
+        return attrs
+
+
+# 7. SERIALIZER YA CUSHANGE/READ BUSINESS PERMISSIONS TOGGLES
 class BusinessPermissionsSerializer(serializers.ModelSerializer):
+    has_settings_password = serializers.SerializerMethodField()
+
     class Meta:
         model = Business
         fields = [
             'show_profit_to_cashier',
             'allow_cashier_debts',
             'allow_cashier_custom_price',
-            'show_buying_price_to_cashier'
+            'show_buying_price_to_cashier',
+            'has_settings_password'
         ]
+
+    def get_has_settings_password(self, obj):
+        return bool(obj.settings_password)

@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
 from datetime import timedelta
 
@@ -25,6 +26,19 @@ class Business(models.Model):
     allow_cashier_debts = models.BooleanField(default=True)
     allow_cashier_custom_price = models.BooleanField(default=True)
     show_buying_price_to_cashier = models.BooleanField(default=False)
+
+    # NENOSIRI MAALUM LA SETTINGS (SETTINGS PASSCODE - HASHED)
+    settings_password = models.CharField(max_length=128, blank=True, null=True)
+
+    def set_settings_password(self, raw_password):
+        """Inahifadhi password ya settings ikiwa hashed"""
+        self.settings_password = make_password(raw_password)
+
+    def check_settings_password(self, raw_password):
+        """Inahakiki kama password iliyoingizwa ni sahihi"""
+        if not self.settings_password:
+            return False
+        return check_password(raw_password, self.settings_password)
 
     def save(self, *args, **kwargs):
         if not self.trial_end_date:

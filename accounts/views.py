@@ -14,7 +14,9 @@ from .serializers import (
     RegisterBusinessSerializer, 
     UserProfileSerializer, 
     BillingStatusSerializer,
-    VerifyPasswordSerializer,
+    VerifySettingsPasswordSerializer,
+    SetSettingsPasswordSerializer,
+    ResetSettingsPasswordSerializer,
     BusinessPermissionsSerializer
 )
 from .models import Business, SubscriptionPayment
@@ -36,10 +38,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['business_name'] = self.user.business.name if self.user.business else None
         data['business_type'] = self.user.business.business_type if self.user.business else None
         
-        # Siku zilizobaki na Hali ya Trial pamoja na Haki za Cashier (Permissions Toggles)
+        # Siku zilizobaki, Hali ya Trial, na Mipangilio ya Cashier (Permissions Toggles)
         if self.user.business:
             data['days_left_in_trial'] = self.user.business.days_left_in_trial
             data['has_active_access'] = self.user.business.has_active_access
+            data['has_settings_password'] = bool(self.user.business.settings_password)
             data['permissions'] = {
                 'show_profit_to_cashier': self.user.business.show_profit_to_cashier,
                 'allow_cashier_debts': self.user.business.allow_cashier_debts,
@@ -110,21 +113,63 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# E. API YA KUHAKIKI PASSWORD KABLA YA KUINGIA SETTINGS (RE-AUTHENTICATION)
+# E. API YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
 class VerifyPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        serializer = VerifyPasswordSerializer(data=request.data, context={'request': request})
+        serializer = VerifySettingsPasswordSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             return Response({
                 "success": True, 
-                "message": "Nenosiri limehakikiwa kikamilifu!"
+                "message": "Nenosiri la Mipangilio limehakikiwa kikamilifu!"
             }, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# F. API YA KUANGALIA NA KUBADILISHA MIPANGILIO YA HAKI ZA CASHIER
+# F. API YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
+class SetSettingsPasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kuweka Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = SetSettingsPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            new_pwd = serializer.validated_data['new_settings_password']
+            business.set_settings_password(new_pwd)
+            business.save()
+            return Response({"message": "Nenosiri la Mipangilio limewekwa kikamilifu!"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# G. API YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU (RESET SETTINGS PASSCODE)
+class ResetSettingsPasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kubadilisha Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ResetSettingsPasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            new_pwd = serializer.validated_data['new_settings_password']
+            business.set_settings_password(new_pwd)
+            business.save()
+            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# H. API YA KUANGALIA NA KUBADILISHA MIPANGILIO YA HAKI ZA CASHIER
 class BusinessPermissionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -157,7 +202,7 @@ class BusinessPermissionsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# G. API ya Kuanzisha Malipo ya PesaPal
+# I. API ya Kuanzisha Malipo ya PesaPal
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -212,7 +257,7 @@ class InitiateSubscriptionPaymentView(APIView):
         return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# H. API ya Ku-handle PesaPal IPN Notification Callback
+# J. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 

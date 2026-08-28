@@ -8,6 +8,8 @@ from .views import (
     InitiateSubscriptionPaymentView,
     PesaPalIPNCallbackView,
     VerifyPasswordView,
+    SetSettingsPasswordView,
+    ResetSettingsPasswordView,
     BusinessPermissionsView
 )
 
@@ -19,6 +21,8 @@ urlpatterns = [
     
     # Security & Business Permissions Endpoints
     path('verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
+    path('set-settings-password/', SetSettingsPasswordView.as_view(), name='set_settings_password'),
+    path('reset-settings-password/', ResetSettingsPasswordView.as_view(), name='reset_settings_password'),
     path('business-permissions/', BusinessPermissionsView.as_view(), name='business_permissions'),
 
     # Billing & Subscription Endpoints
