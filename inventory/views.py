@@ -5,7 +5,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, F, FloatField
 from .models import Category, Product
 from .serializers import CategorySerializer, ProductSerializer
-from authentication.models import BusinessPermission  # Hakikisha import hii ipo kulingana na app yako ya permissions
 
 
 # 1. ViewSet ya Category
@@ -34,11 +33,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
-    # ZIMA PAGINATION ILI BIDHAA ZOTE ZIONEKANE
     pagination_class = None
     
-    # Kusaidia Kusearch na Ku-filter bidhaa kwa haraka
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['category', 'unit', 'is_active']
     search_fields = ['name', 'barcode']
@@ -63,7 +59,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def summary(self, request):
         user = request.user
-        if not (hasattr(user, 'business') and user.business):
+        business = getattr(user, 'business', None)
+
+        if not business:
             return Response({
                 'total_current_cost': 0.0,
                 'total_potential_retail': 0.0,
@@ -74,15 +72,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         total_products_count = queryset.count()
 
-        # Kagua Business Permissions zilizowekwa na Bosi
-        business = user.business
-        perm = BusinessPermission.objects.filter(business=business).first()
-        
-        # Angalia kama ruhusa za kuona faida na bei ya mtaji zimewashwa
-        can_see_profit = perm.show_profit_to_cashier if perm else True
-        can_see_buying_price = perm.show_buying_price_to_cashier if perm else True
+        # KAGUA TOGGLES KUTOKA KWENYE BUSINESS MODEL MOJA KWA MOJA
+        can_see_profit = business.show_profit_to_cashier
+        can_see_buying_price = business.show_buying_price_to_cashier
 
-        # KAMA RUHUSA IMESHAZIMWA (False), FICHA THAMANI ZOTE NA URUDISHE 0.0
+        # KAMA POPOTE PALE TOGGLE YA FAIDA AU BEI YA MTAJI IPO FALSE:
+        # FICHA THAMANI ZOTE HAPO HAPO!
         if not can_see_profit or not can_see_buying_price:
             return Response({
                 'total_current_cost': 0.0,
@@ -91,17 +86,15 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'total_products_count': total_products_count
             }, status=status.HTTP_200_OK)
 
-        # 1. Thamani ya Stoko ya Sasa kwa Bei ya Kununulia (Cost Price * Quantity)
+        # KAMA ZOTE MBILI ZIKO TRUE, KOKOTOA DATA HALISI
         cost_sum = queryset.aggregate(
             total=Sum(F('quantity') * F('buying_price'), output_field=FloatField())
         )['total'] or 0.0
 
-        # 2. Thamani Tarajiwa ya Mauzo kwa Bei ya Kuuzia (Selling Price * Quantity)
         retail_sum = queryset.aggregate(
             total=Sum(F('quantity') * F('selling_price'), output_field=FloatField())
         )['total'] or 0.0
 
-        # 3. Kadirio la Faida Kwenye Stoko
         expected_profit = retail_sum - cost_sum
 
         return Response({

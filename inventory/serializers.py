@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Category, Product
-from authentication.models import BusinessPermission  # Hakikisha njia hii ya import inafanana na app yako ya permissions
 
 
 # 1. Serializer ya Categories
@@ -42,32 +41,30 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_buying_price(self, obj):
         """
-        Kagua kama duka linaruhusu kuonyesha Bei ya Kununulia (buying_price).
-        Kama ruhusa ipo False, rejesha 0 badala ya bei halisi.
+        Soma toggle ya show_buying_price_to_cashier moja kwa moja kutoka kwenye Business ya user
         """
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
             user = request.user
             business = getattr(user, 'business', None)
             
-            if business:
-                perm = BusinessPermission.objects.filter(business=business).first()
-                if perm and not perm.show_buying_price_to_cashier:
-                    return 0
+            # KAMA TOGGLE YA KUONYESHA BEI YA MTAJI IPO OFF (FALSE), REJESHA 0
+            if business and not business.show_buying_price_to_cashier:
+                return 0.0
 
         return obj.buying_price
 
     def to_internal_value(self, data):
         """
-        Kama buying_price haijatumwa kwenye request (kwa sababu field imefichwa frontend),
-        weka default value ya 0 au tumia iliyopo ili kuzuia ValidationError.
+        Kama buying_price haijatumwa na frontend (kwa sababu field imefichwa),
+        weka value ya zamani au 0 ili kuzuia error wakati wa kusajili/kubadilisha.
         """
         data = data.copy()
         if 'buying_price' not in data or data['buying_price'] == '' or data['buying_price'] is None:
             if self.instance:
                 data['buying_price'] = self.instance.buying_price
             else:
-                data['buying_price'] = 0
+                data['buying_price'] = 0.0
         return super().to_internal_value(data)
 
     def validate_barcode(self, value):
