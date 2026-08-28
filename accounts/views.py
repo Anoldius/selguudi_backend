@@ -1,287 +1,105 @@
-import uuid
-from datetime import timedelta
-from django.utils import timezone
-from django.conf import settings
-
-from rest_framework import status, generics, permissions, serializers
+from rest_framework import viewsets, permissions, filters, status, serializers
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.throttling import AnonRateThrottle
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
-from .serializers import (
-    RegisterBusinessSerializer, 
-    UserProfileSerializer, 
-    BillingStatusSerializer,
-    VerifySettingsPasswordSerializer,
-    SetSettingsPasswordSerializer,
-    ResetSettingsPasswordSerializer,
-    BusinessPermissionsSerializer
-)
-from .models import Business, SubscriptionPayment
-from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_ipn
-
-# A. Custom JWT Token Serializer ya Login inayotumia Username na Password
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    username = serializers.CharField(required=True)
-    password = serializers.CharField(required=True, write_only=True)
-
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        
-        # Taarifa za mtumiaji na biashara anayoimiliki/anayoifanyia kazi
-        data['user_id'] = str(self.user.id)
-        data['username'] = self.user.username
-        data['role'] = self.user.role
-        data['business_id'] = str(self.user.business.id) if self.user.business else None
-        data['business_name'] = self.user.business.name if self.user.business else None
-        data['business_type'] = self.user.business.business_type if self.user.business else None
-        
-        # Siku zilizobaki, Hali ya Trial, na Mipangilio ya Cashier (Permissions Toggles)
-        if self.user.business:
-            data['days_left_in_trial'] = self.user.business.days_left_in_trial
-            data['has_active_access'] = self.user.business.has_active_access
-            data['has_settings_password'] = bool(self.user.business.settings_password)
-            data['permissions'] = {
-                'show_profit_to_cashier': self.user.business.show_profit_to_cashier,
-                'allow_cashier_debts': self.user.business.allow_cashier_debts,
-                'allow_cashier_custom_price': self.user.business.allow_cashier_custom_price,
-                'show_buying_price_to_cashier': self.user.business.show_buying_price_to_cashier,
-            }
-            
-        return data
+from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Sum, F, FloatField
+from .models import Category, Product
+from .serializers import CategorySerializer, ProductSerializer
 
 
-# Class ndogo ya ku-limit Login Request kwa sekunde/dakika
-class LoginRateThrottle(AnonRateThrottle):
-    rate = '10/minute'
-
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-    throttle_classes = [LoginRateThrottle]
-
-
-# B. API ya Kujisajili Biashara na Mmiliki
-class RegisterBusinessView(generics.CreateAPIView):
-    queryset = Business.objects.all()
-    serializer_class = RegisterBusinessSerializer
-    permission_classes = [permissions.AllowAny]
-
-
-# C. API ya Kuangalia Profile ya Mtumiaji aliye-login
-class UserProfileView(APIView):
+# 1. ViewSet ya Category
+class CategoryViewSet(viewsets.ModelViewSet):
+    serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
-    def get(self, request):
-        serializer = UserProfileSerializer(request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            return Category.objects.filter(business=user.business).order_by('name')
+        return Category.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(business=user.business)
+        else:
+            raise serializers.ValidationError({
+                "detail": "Mtumiaji huyu hajahusianishwa na duka/biashara yoyote."
+            })
 
 
-# D. API ya Kuangalia Hali ya Billing & Trial
-class BillingStatusView(APIView):
+# 2. ViewSet ya Product (Bidhaa na Stoko)
+class ProductViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+    
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'unit', 'is_active']
+    search_fields = ['name', 'barcode']
+    ordering_fields = ['name', 'selling_price', 'quantity']
 
-    def get(self, request):
+    def get_queryset(self):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            return Product.objects.filter(business=user.business).order_by('-created_at')
+        return Product.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if hasattr(user, 'business') and user.business:
+            serializer.save(business=user.business)
+        else:
+            raise serializers.ValidationError({
+                "detail": "Mtumiaji huyu hajahusianishwa na duka/biashara yoyote."
+            })
+
+    # CUSTOM ENDPOINT: /api/inventory/products/summary/
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def summary(self, request):
         user = request.user
         business = getattr(user, 'business', None)
 
         if not business:
-            return Response(
-                {"error": "Hauna duka lililounganishwa na akaunti hii."}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        if not business.subscription_end_date and business.trial_start_date:
-            expected_trial_end = business.trial_start_date + timedelta(days=30)
-            if business.trial_end_date != expected_trial_end:
-                business.trial_end_date = expected_trial_end
-                business.save()
-
-        payload = {
-            'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial,
-            'has_active_access': business.has_active_access,
-            'trial_start_date': business.trial_start_date,
-            'trial_end_date': business.trial_end_date,
-            'subscription_end_date': business.subscription_end_date,
-            'monthly_amount': 20000.00
-        }
-
-        serializer = BillingStatusSerializer(payload)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-# E. API YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
-class VerifyPasswordView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        serializer = VerifySettingsPasswordSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
             return Response({
-                "success": True, 
-                "message": "Nenosiri la Mipangilio limehakikiwa kikamilifu!"
-            }, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# F. API YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
-class SetSettingsPasswordView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        if request.user.role != 'owner':
-            return Response({"error": "Bosi pekee ndiye anayeweza kuweka Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
-
-        business = getattr(request.user, 'business', None)
-        if not business:
-            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = SetSettingsPasswordSerializer(data=request.data)
-        if serializer.is_valid():
-            new_pwd = serializer.validated_data['new_settings_password']
-            business.set_settings_password(new_pwd)
-            business.save()
-            return Response({"message": "Nenosiri la Mipangilio limewekwa kikamilifu!"}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# G. API YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU (RESET SETTINGS PASSCODE)
-class ResetSettingsPasswordView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        if request.user.role != 'owner':
-            return Response({"error": "Bosi pekee ndiye anayeweza kubadilisha Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
-
-        business = getattr(request.user, 'business', None)
-        if not business:
-            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = ResetSettingsPasswordSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            new_pwd = serializer.validated_data['new_settings_password']
-            business.set_settings_password(new_pwd)
-            business.save()
-            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# H. API YA KUANGALIA NA KUBADILISHA MIPANGILIO YA HAKI ZA CASHIER
-class BusinessPermissionsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        business = getattr(request.user, 'business', None)
-        if not business:
-            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = BusinessPermissionsSerializer(business)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def put(self, request):
-        if request.user.role != 'owner':
-            return Response({
-                "error": "Hauna mamlaka ya kubadilisha mipangilio ya biashara."
-            }, status=status.HTTP_403_FORBIDDEN)
-
-        business = getattr(request.user, 'business', None)
-        if not business:
-            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = BusinessPermissionsSerializer(business, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                "message": "Mipangilio ya duka imehifadhiwa kikamilifu!",
-                "data": serializer.data
+                'total_current_cost': 0.0,
+                'total_potential_retail': 0.0,
+                'expected_stock_profit': 0.0,
+                'total_products_count': 0
             }, status=status.HTTP_200_OK)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        queryset = self.get_queryset()
+        total_products_count = queryset.count()
 
+        # KAGUA TOGGLES KUTOKA KWENYE BUSINESS MODEL MOJA KWA MOJA
+        can_see_profit = business.show_profit_to_cashier
+        can_see_buying_price = business.show_buying_price_to_cashier
 
-# I. API ya Kuanzisha Malipo ya PesaPal
-class InitiateSubscriptionPaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+        # KAMA POPOTE PALE TOGGLE YA FAIDA AU BEI YA MTAJI IPO FALSE:
+        # FICHA THAMANI ZOTE HAPO HAPO!
+        if not can_see_profit or not can_see_buying_price:
+            return Response({
+                'total_current_cost': 0.0,
+                'total_potential_retail': 0.0,
+                'expected_stock_profit': 0.0,
+                'total_products_count': total_products_count
+            }, status=status.HTTP_200_OK)
 
-    def post(self, request):
-        business = getattr(request.user, 'business', None)
-        if not business:
-            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+        # KAMA ZOTE MBILI ZIKO TRUE, KOKOTOA DATA HALISI
+        cost_sum = queryset.aggregate(
+            total=Sum(F('quantity') * F('buying_price'), output_field=FloatField())
+        )['total'] or 0.0
 
-        merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
+        retail_sum = queryset.aggregate(
+            total=Sum(F('quantity') * F('selling_price'), output_field=FloatField())
+        )['total'] or 0.0
 
-        token = get_pesapal_token()
-        if not token:
-            return Response(
-                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha Credentials zipo sahihi."}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        expected_profit = retail_sum - cost_sum
 
-        payment = SubscriptionPayment.objects.create(
-            business=business,
-            merchant_reference=merchant_ref,
-            amount=20000.00,
-            status='PENDING'
-        )
-
-        ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
-        if not ipn_id:
-            ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
-            ipn_id = register_pesapal_ipn(token, ipn_url) or "e86d2524-1111-2222-3333-444455556666"
-
-        order_payload = {
-            "id": merchant_ref,
-            "currency": "TZS",
-            "amount": 20000.00,
-            "description": f"Subscription ya Selguudi POS - {business.name[:20]}",
-            "callback_url": f"https://selguudi-frontend.vercel.app/billing/success?merchant_ref={merchant_ref}",
-            "notification_id": ipn_id if ipn_id else None,
-            "billing_address": {
-                "email_address": request.user.email if request.user.email else "info@selguudi.com",
-                "phone_number": request.user.phone if request.user.phone else "0700000000",
-                "first_name": request.user.first_name if request.user.first_name else business.name,
-                "last_name": "Owner"
-            }
-        }
-
-        pesapal_res = submit_pesapal_order(token, order_payload)
-
-        if pesapal_res and 'redirect_url' in pesapal_res:
-            payment.pesapal_order_tracking_id = pesapal_res.get('order_tracking_id')
-            payment.save()
-            return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
-
-        return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-# J. API ya Ku-handle PesaPal IPN Notification Callback
-class PesaPalIPNCallbackView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request):
-        pesapal_tracking_id = request.GET.get('OrderTrackingId')
-        merchant_ref = request.GET.get('OrderMerchantReference')
-
-        if merchant_ref:
-            try:
-                payment = SubscriptionPayment.objects.get(merchant_reference=merchant_ref)
-                payment.status = 'COMPLETED'
-                payment.pesapal_order_tracking_id = pesapal_tracking_id
-                payment.save()
-
-                business = payment.business
-                now = timezone.now()
-                start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now
-
-                business.subscription_end_date = start_from + timedelta(days=30)
-                business.is_active_subscription = True
-                business.save()
-
-                return Response({"status": "SUCCESS", "message": "Subscription updated successfully."})
-            except SubscriptionPayment.DoesNotExist:
-                pass
-
-        return Response({"status": "FAILED"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'total_current_cost': round(cost_sum, 2),
+            'total_potential_retail': round(retail_sum, 2),
+            'expected_stock_profit': round(expected_profit, 2),
+            'total_products_count': total_products_count
+        }, status=status.HTTP_200_OK)
