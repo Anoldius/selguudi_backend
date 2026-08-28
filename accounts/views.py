@@ -86,6 +86,31 @@ class UserProfileView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# C2. API YA KUBADILISHA JINA LA DUKA (BUSINESS NAME UPDATE)
+class UpdateBusinessNameView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kubadilisha jina la duka."}, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        new_name = request.data.get('name', '').strip()
+        if not new_name:
+            return Response({"error": "Jina la duka haliwezi kuwa wazi."}, status=status.HTTP_400_BAD_REQUEST)
+
+        business.name = new_name
+        business.save()
+
+        return Response({
+            "message": "Jina la duka limebadilishwa kikamilifu!",
+            "business_name": business.name
+        }, status=status.HTTP_200_OK)
+
+
 # D. API ya Kuangalia Hali ya Billing & Trial
 class BillingStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]

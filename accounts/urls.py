@@ -4,6 +4,7 @@ from .views import (
     RegisterBusinessView, 
     CustomTokenObtainPairView, 
     UserProfileView,
+    UpdateBusinessNameView, # <--- MPYA: Import ya Kubadilisha Jina la Duka
     BillingStatusView,
     InitiateSubscriptionPaymentView,
     PesaPalIPNCallbackView,
@@ -11,8 +12,8 @@ from .views import (
     SetSettingsPasswordView,
     ResetSettingsPasswordView,
     BusinessPermissionsView,
-    ManageCashiersView,   # <--- MPYA: Kusajili na kuona orodha ya Cashiers
-    DeleteCashierView     # <--- MPYA: Kumuondoa/Kmfuta Cashier
+    ManageCashiersView,   
+    DeleteCashierView     
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
     path('login/', CustomTokenObtainPairView.as_view(), name='login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('profile/', UserProfileView.as_view(), name='user_profile'),
+    path('update-business-name/', UpdateBusinessNameView.as_view(), name='update_business_name'),
     
     # Security & Business Permissions Endpoints
     path('verify-password/', VerifyPasswordView.as_view(), name='verify_password'),
