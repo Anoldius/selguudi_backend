@@ -9,36 +9,65 @@ from inventory.models import Product
 from sales.models import Sale, SaleItem
 
 
-# 1. API ya Muhtasari wa Dashboard ya Siku (Daily Summary)
+# 1. API ya Muhtasari wa Dashboard / Ripoti (Filter kwa Kipindi + Permission Protection)
 class DashboardSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        business = request.user.business
-        today = timezone.now().date()
+        user = request.user
+        business = getattr(user, 'business', None)
 
-        # A. Mauzo ya Leo Pekee
-        today_sales = Sale.objects.filter(
-            business=business, 
-            created_at__date=today
-        )
+        if not business:
+            return Response({
+                "date": timezone.now().date(),
+                "today_total_sales": 0.0,
+                "today_receipts": 0,
+                "today_estimated_profit": 0.0,
+                "low_stock_items_count": 0
+            }, status=status.HTTP_200_OK)
 
-        total_sales_amount = today_sales.aggregate(total=Sum('total_amount'))['total'] or 0.00
-        total_receipts_count = today_sales.count()
+        # Chagua Kipindi cha Takwimu (Default: 'today')
+        period = request.GET.get('period', 'today')
+        now = timezone.now()
+        today = now.date()
 
-        # B. Hesabu Faida ya Leo (Total Revenue - Total Cost)
-        # Faida = (Selling Price - Buying Price) * Quantity
-        profit_query = SaleItem.objects.filter(
-            sale__business=business,
-            sale__created_at__date=today
-        ).annotate(
-            item_profit=ExpressionWrapper(
-                (F('unit_price') - F('product__buying_price')) * F('quantity'),
-                output_field=DecimalField()
-            )
-        ).aggregate(total_profit=Sum('item_profit'))
+        sales_filter = {'business': business}
+        items_filter = {'sale__business': business}
 
-        total_profit = profit_query['total_profit'] or 0.00
+        if period == 'today':
+            sales_filter['created_at__date'] = today
+            items_filter['sale__created_at__date'] = today
+        elif period == 'yesterday':
+            yesterday = today - timezone.timedelta(days=1)
+            sales_filter['created_at__date'] = yesterday
+            items_filter['sale__created_at__date'] = yesterday
+        elif period == 'week':
+            start_of_week = today - timezone.timedelta(days=7)
+            sales_filter['created_at__date__gte'] = start_of_week
+            items_filter['sale__created_at__date__gte'] = start_of_week
+        elif period == 'month':
+            start_of_month = today - timezone.timedelta(days=30)
+            sales_filter['created_at__date__gte'] = start_of_month
+            items_filter['sale__created_at__date__gte'] = start_of_month
+
+        # A. Mauzo ya Kipindi Ulichochagua
+        period_sales = Sale.objects.filter(**sales_filter)
+        total_sales_amount = period_sales.aggregate(total=Sum('total_amount'))['total'] or 0.00
+        total_receipts_count = period_sales.count()
+
+        # B. Kagua Haki za Kuona Faida (Permissions Check)
+        can_see_profit = (user.role == 'owner') or getattr(business, 'show_profit_to_cashier', False)
+
+        total_profit = 0.00
+        if can_see_profit:
+            profit_query = SaleItem.objects.filter(**items_filter).annotate(
+                item_profit=ExpressionWrapper(
+                    (F('unit_price') - F('product__buying_price')) * F('quantity'),
+                    output_field=DecimalField()
+                )
+            ).aggregate(total_profit=Sum('item_profit'))
+            
+            total_profit = profit_query['total_profit'] or 0.00
 
         # C. Idadi ya Bidhaa Zilizo na Stoko Ndogo (Low Stock Alert Count)
         low_stock_count = Product.objects.filter(
@@ -61,7 +90,10 @@ class LowStockProductsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        business = request.user.business
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response([], status=status.HTTP_200_OK)
+
         low_stock_products = Product.objects.filter(
             business=business,
             quantity__lte=F('min_stock_alert'),
@@ -76,7 +108,9 @@ class TopSellingProductsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        business = request.user.business
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response([], status=status.HTTP_200_OK)
         
         top_products = SaleItem.objects.filter(
             sale__business=business
