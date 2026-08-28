@@ -72,9 +72,8 @@ class ProductViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         total_products_count = queryset.count()
 
-        # KAGUA TOGGLE MPYA YA KADI ZA STOKO MOJA KWA MOJA
-        # Kama ipo False, ficha thamani za gharama na faida backend
-        if not getattr(business, 'show_stock_summary_cards', False):
+        # KAGUA ROLE YA USER: Kama sio Owner, rudisha 0.0
+        if getattr(user, 'role', '') != 'owner':
             return Response({
                 'total_current_cost': 0.0,
                 'total_potential_retail': 0.0,
@@ -82,7 +81,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'total_products_count': total_products_count
             }, status=status.HTTP_200_OK)
 
-        # KAMA IPO TRUE, KOKOTOA DATA HALISI
+        # KAMA NI OWNER, KOKOTOA DATA HALISI
         cost_sum = queryset.aggregate(
             total=Sum(F('quantity') * F('buying_price'), output_field=FloatField())
         )['total'] or 0.0
