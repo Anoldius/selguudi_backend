@@ -21,7 +21,7 @@ def validate_strong_password(value):
     return value
 
 
-# 1. Serializer ya Kuandikisha Biashara Mpya pamoja na Mmiliki wake
+# 1. Serializer ya Kuandikisha Biashara Mpya pamoja na Mmiliki wake (Owner)
 class RegisterBusinessSerializer(serializers.ModelSerializer):
     owner_username = serializers.CharField(write_only=True)
     owner_email = serializers.EmailField(write_only=True, required=False, allow_blank=True) 
@@ -36,7 +36,6 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         ]
 
     def validate_owner_username(self, value):
-        # Username pekee ndiyo inapaswa kuwa Unique!
         if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError("Username hii tayari inatumiwa. Tafadhali chagua username nyingine.")
         return value
@@ -47,11 +46,9 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         owner_password = validated_data.pop('owner_password')
         owner_full_name = validated_data.pop('owner_full_name', '')
 
-        # A. Tengeneza Business
         business = Business.objects.create(**validated_data)
 
-        # B. Tengeneza Owner User
-        user = User.objects.create_user(
+        User.objects.create_user(
             username=owner_username,
             email=owner_email,
             password=owner_password,
@@ -64,7 +61,52 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         return business
 
 
-# 2. Serializer ya Kuonyesha Profile ya User aliye-login
+# 2. Serializer ya Kusajili Mfanyakazi Mpya (Cashier)
+class CreateCashierSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True, 
+        style={'input_type': 'password'}, 
+        validators=[validate_strong_password]
+    )
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone', 'password', 'role']
+        read_only_fields = ['id', 'role']
+
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Username hii tayari imeshatumika. Chagua username nyingine.")
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        business = getattr(request.user, 'business', None)
+
+        if not business:
+            raise serializers.ValidationError({"detail": "Duka halijapatikana."})
+
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            email=validated_data.get('email', ''),
+            phone=validated_data.get('phone', ''),
+            role='cashier',
+            business=business
+        )
+        return user
+
+
+# 3. Serializer ya Kuonyesha Orodha ya Cashiers
+class CashierListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone', 'role', 'is_active', 'date_joined']
+
+
+# 4. Serializer ya Kuonyesha Profile ya User aliye-login
 class UserProfileSerializer(serializers.ModelSerializer):
     business_name = serializers.ReadOnlyField(source='business.name')
     business_type = serializers.ReadOnlyField(source='business.business_type')
@@ -74,7 +116,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'role', 'phone', 'business', 'business_name', 'business_type']
 
 
-# 3. Serializer ya Hali ya Billing & Trial
+# 5. Serializer ya Hali ya Billing & Trial
 class BillingStatusSerializer(serializers.Serializer):
     business_name = serializers.CharField()
     days_left_in_trial = serializers.IntegerField()
@@ -85,7 +127,7 @@ class BillingStatusSerializer(serializers.Serializer):
     monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
 
 
-# 4. SERIALIZER YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
+# 6. SERIALIZER YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
 class VerifySettingsPasswordSerializer(serializers.Serializer):
     settings_password = serializers.CharField(write_only=True, required=True)
 
@@ -105,7 +147,7 @@ class VerifySettingsPasswordSerializer(serializers.Serializer):
         return value
 
 
-# 5. SERIALIZER YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
+# 7. SERIALIZER YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
 class SetSettingsPasswordSerializer(serializers.Serializer):
     new_settings_password = serializers.CharField(
         write_only=True, 
@@ -120,7 +162,7 @@ class SetSettingsPasswordSerializer(serializers.Serializer):
         return attrs
 
 
-# 6. SERIALIZER YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU (RESET FORGOTTEN SETTINGS PASSWORD)
+# 8. SERIALIZER YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU
 class ResetSettingsPasswordSerializer(serializers.Serializer):
     account_login_password = serializers.CharField(write_only=True, required=True)
     new_settings_password = serializers.CharField(
@@ -133,18 +175,16 @@ class ResetSettingsPasswordSerializer(serializers.Serializer):
     def validate(self, attrs):
         user = self.context['request'].user
 
-        # A. Hakiki Account Login Password kwanza kama mtumiaji kweli ndiye mmiliki
         if not user.check_password(attrs['account_login_password']):
             raise serializers.ValidationError({"account_login_password": "Nenosiri lako la Account Login si sahihi."})
 
-        # B. Hakiki kama password mpya za Settings zinafanana
         if attrs['new_settings_password'] != attrs['confirm_settings_password']:
             raise serializers.ValidationError({"confirm_settings_password": "Nenosiri jipya na kithibitisho havifanani."})
 
         return attrs
 
 
-# 7. SERIALIZER YA CUSHANGE/READ BUSINESS PERMISSIONS TOGGLES
+# 9. SERIALIZER YA CHANGE/READ BUSINESS PERMISSIONS TOGGLES
 class BusinessPermissionsSerializer(serializers.ModelSerializer):
     has_settings_password = serializers.SerializerMethodField()
 
