@@ -155,6 +155,7 @@ class BusinessPermissionsSerializer(serializers.ModelSerializer):
             'allow_cashier_debts',
             'allow_cashier_custom_price',
             'show_buying_price_to_cashier',
+            'show_stock_summary_cards',
             'has_settings_password'
         ]
 

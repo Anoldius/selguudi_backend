@@ -72,13 +72,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         total_products_count = queryset.count()
 
-        # KAGUA TOGGLES KUTOKA KWENYE BUSINESS MODEL MOJA KWA MOJA
-        can_see_profit = business.show_profit_to_cashier
-        can_see_buying_price = business.show_buying_price_to_cashier
-
-        # KAMA POPOTE PALE TOGGLE YA FAIDA AU BEI YA MTAJI IPO FALSE:
-        # FICHA THAMANI ZOTE HAPO HAPO!
-        if not can_see_profit or not can_see_buying_price:
+        # KAGUA TOGGLE MPYA YA KADI ZA STOKO MOJA KWA MOJA
+        # Kama ipo False, ficha thamani za gharama na faida backend
+        if not getattr(business, 'show_stock_summary_cards', False):
             return Response({
                 'total_current_cost': 0.0,
                 'total_potential_retail': 0.0,
@@ -86,7 +82,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 'total_products_count': total_products_count
             }, status=status.HTTP_200_OK)
 
-        # KAMA ZOTE MBILI ZIKO TRUE, KOKOTOA DATA HALISI
+        # KAMA IPO TRUE, KOKOTOA DATA HALISI
         cost_sum = queryset.aggregate(
             total=Sum(F('quantity') * F('buying_price'), output_field=FloatField())
         )['total'] or 0.0

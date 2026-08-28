@@ -26,6 +26,7 @@ class Business(models.Model):
     allow_cashier_debts = models.BooleanField(default=True)
     allow_cashier_custom_price = models.BooleanField(default=True)
     show_buying_price_to_cashier = models.BooleanField(default=False)
+    show_stock_summary_cards = models.BooleanField(default=False)  # <--- FIELD MPYA HAPA
 
     # NENOSIRI MAALUM LA SETTINGS (SETTINGS PASSCODE - HASHED)
     settings_password = models.CharField(max_length=128, blank=True, null=True)
@@ -104,7 +105,7 @@ class SubscriptionPayment(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=20000.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     payment_method = models.CharField(max_length=50, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)  # <--- Hapa ilikuwa imeandikwa auto_auto_add
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

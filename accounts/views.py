@@ -48,6 +48,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'allow_cashier_debts': self.user.business.allow_cashier_debts,
                 'allow_cashier_custom_price': self.user.business.allow_cashier_custom_price,
                 'show_buying_price_to_cashier': self.user.business.show_buying_price_to_cashier,
+                'show_stock_summary_cards': self.user.business.show_stock_summary_cards,  # <--- ONGEZO HAPO PEKEE
             }
             
         return data
@@ -165,7 +166,7 @@ class ResetSettingsPasswordView(APIView):
             new_pwd = serializer.validated_data['new_settings_password']
             business.set_settings_password(new_pwd)
             business.save()
-            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_200_OK)
+            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
