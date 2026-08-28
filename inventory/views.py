@@ -5,6 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Sum, F, FloatField
 from .models import Category, Product
 from .serializers import CategorySerializer, ProductSerializer
+from authentication.models import BusinessPermission  # Hakikisha import hii ipo kulingana na app yako ya permissions
 
 
 # 1. ViewSet ya Category
@@ -71,6 +72,24 @@ class ProductViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_200_OK)
 
         queryset = self.get_queryset()
+        total_products_count = queryset.count()
+
+        # Kagua Business Permissions zilizowekwa na Bosi
+        business = user.business
+        perm = BusinessPermission.objects.filter(business=business).first()
+        
+        # Angalia kama ruhusa za kuona faida na bei ya mtaji zimewashwa
+        can_see_profit = perm.show_profit_to_cashier if perm else True
+        can_see_buying_price = perm.show_buying_price_to_cashier if perm else True
+
+        # KAMA RUHUSA IMESHAZIMWA (False), FICHA THAMANI ZOTE NA URUDISHE 0.0
+        if not can_see_profit or not can_see_buying_price:
+            return Response({
+                'total_current_cost': 0.0,
+                'total_potential_retail': 0.0,
+                'expected_stock_profit': 0.0,
+                'total_products_count': total_products_count
+            }, status=status.HTTP_200_OK)
 
         # 1. Thamani ya Stoko ya Sasa kwa Bei ya Kununulia (Cost Price * Quantity)
         cost_sum = queryset.aggregate(
@@ -89,5 +108,5 @@ class ProductViewSet(viewsets.ModelViewSet):
             'total_current_cost': round(cost_sum, 2),
             'total_potential_retail': round(retail_sum, 2),
             'expected_stock_profit': round(expected_profit, 2),
-            'total_products_count': queryset.count()
+            'total_products_count': total_products_count
         }, status=status.HTTP_200_OK)
