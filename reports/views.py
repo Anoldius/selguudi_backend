@@ -55,8 +55,8 @@ class DashboardSummaryView(APIView):
         total_sales_amount = period_sales.aggregate(total=Sum('total_amount'))['total'] or 0.00
         total_receipts_count = period_sales.count()
 
-        # B. Kagua Haki za Kuona Faida (Permissions Check)
-        can_see_profit = (user.role == 'owner') or getattr(business, 'show_profit_to_cashier', False)
+        # B. Kagua Haki za Kuona Faida (Soma Business Toggle Moja kwa Moja)
+        can_see_profit = getattr(business, 'show_profit_to_cashier', False)
 
         total_profit = 0.00
         if can_see_profit:
