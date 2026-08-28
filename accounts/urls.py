@@ -10,7 +10,9 @@ from .views import (
     VerifyPasswordView,
     SetSettingsPasswordView,
     ResetSettingsPasswordView,
-    BusinessPermissionsView
+    BusinessPermissionsView,
+    ManageCashiersView,   # <--- MPYA: Kusajili na kuona orodha ya Cashiers
+    DeleteCashierView     # <--- MPYA: Kumuondoa/Kmfuta Cashier
 )
 
 urlpatterns = [
@@ -24,6 +26,10 @@ urlpatterns = [
     path('set-settings-password/', SetSettingsPasswordView.as_view(), name='set_settings_password'),
     path('reset-settings-password/', ResetSettingsPasswordView.as_view(), name='reset_settings_password'),
     path('business-permissions/', BusinessPermissionsView.as_view(), name='business_permissions'),
+
+    # Cashier Management Endpoints (Kusajili na Kufuta Wafanyakazi)
+    path('cashiers/', ManageCashiersView.as_view(), name='manage_cashiers'),
+    path('cashiers/<int:pk>/', DeleteCashierView.as_view(), name='delete_cashier'),
 
     # Billing & Subscription Endpoints
     path('billing/status/', BillingStatusView.as_view(), name='billing_status'),

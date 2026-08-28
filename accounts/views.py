@@ -2,6 +2,7 @@ import uuid
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
+from django.contrib.auth import get_user_model
 
 from rest_framework import status, generics, permissions, serializers
 from rest_framework.response import Response
@@ -17,10 +18,15 @@ from .serializers import (
     VerifySettingsPasswordSerializer,
     SetSettingsPasswordSerializer,
     ResetSettingsPasswordSerializer,
-    BusinessPermissionsSerializer
+    BusinessPermissionsSerializer,
+    CreateCashierSerializer,
+    CashierListSerializer
 )
 from .models import Business, SubscriptionPayment
 from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_ipn
+
+User = get_user_model()
+
 
 # A. Custom JWT Token Serializer ya Login inayotumia Username na Password
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -48,7 +54,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'allow_cashier_debts': self.user.business.allow_cashier_debts,
                 'allow_cashier_custom_price': self.user.business.allow_cashier_custom_price,
                 'show_buying_price_to_cashier': self.user.business.show_buying_price_to_cashier,
-                'show_stock_summary_cards': self.user.business.show_stock_summary_cards,  # <--- ONGEZO HAPO PEKEE
+                'show_stock_summary_cards': self.user.business.show_stock_summary_cards,
             }
             
         return data
@@ -166,7 +172,7 @@ class ResetSettingsPasswordView(APIView):
             new_pwd = serializer.validated_data['new_settings_password']
             business.set_settings_password(new_pwd)
             business.save()
-            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -203,7 +209,55 @@ class BusinessPermissionsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# I. API ya Kuanzisha Malipo ya PesaPal
+# I. API ya Kuona Orodha na Kusajili Mfanyakazi Mpya (Cashier)
+class ManageCashiersView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kuona orodha ya wafanyakazi."}, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        if not business:
+            return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+        cashiers = User.objects.filter(business=business, role='cashier').order_by('-date_joined')
+        serializer = CashierListSerializer(cashiers, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kusajili mfanyakazi mpya."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CreateCashierSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            cashier = serializer.save()
+            return Response({
+                "message": f"Mfanyakazi {cashier.username} amesajiliwa kikamilifu!",
+                "data": CashierListSerializer(cashier).data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# J. API ya Kumuondoa/Kufuta Mfanyakazi
+class DeleteCashierView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, pk):
+        if request.user.role != 'owner':
+            return Response({"error": "Bosi pekee ndiye anayeweza kufuta mfanyakazi."}, status=status.HTTP_403_FORBIDDEN)
+
+        business = getattr(request.user, 'business', None)
+        try:
+            cashier = User.objects.get(id=pk, business=business, role='cashier')
+            cashier.delete()
+            return Response({"message": "Mfanyakazi amefutwa kikamilifu."}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
+
+
+# K. API ya Kuanzisha Malipo ya PesaPal
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -258,7 +312,7 @@ class InitiateSubscriptionPaymentView(APIView):
         return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# J. API ya Ku-handle PesaPal IPN Notification Callback
+# L. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 
