@@ -36,7 +36,8 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         ]
 
     def validate_owner_username(self, value):
-        if User.objects.filter(username__iexact=value).exists():
+        # Kagua tu watumiaji walio active au wenye username hiyo hiyo
+        if User.objects.filter(username__iexact=value, is_active=True).exists():
             raise serializers.ValidationError("Username hii tayari inatumiwa. Tafadhali chagua username nyingine.")
         return value
 
@@ -75,7 +76,8 @@ class CreateCashierSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'role']
 
     def validate_username(self, value):
-        if User.objects.filter(username__iexact=value).exists():
+        # Kagua kama username inatumiwa na akaunti iliyo hai (is_active=True)
+        if User.objects.filter(username__iexact=value, is_active=True).exists():
             raise serializers.ValidationError("Username hii tayari imeshatumika. Chagua username nyingine.")
         return value
 
@@ -94,7 +96,8 @@ class CreateCashierSerializer(serializers.ModelSerializer):
             email=validated_data.get('email', ''),
             phone=validated_data.get('phone', ''),
             role='cashier',
-            business=business
+            business=business,
+            is_active=True
         )
         return user
 
