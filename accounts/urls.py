@@ -4,7 +4,7 @@ from .views import (
     RegisterBusinessView, 
     CustomTokenObtainPairView, 
     UserProfileView,
-    UpdateBusinessNameView, # <--- MPYA: Import ya Kubadilisha Jina la Duka
+    UpdateBusinessNameView,
     BillingStatusView,
     InitiateSubscriptionPaymentView,
     PesaPalIPNCallbackView,

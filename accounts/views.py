@@ -2,7 +2,7 @@ import uuid
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
 
 from rest_framework import status, generics, permissions, serializers
 from rest_framework.response import Response
@@ -28,21 +28,29 @@ from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_i
 User = get_user_model()
 
 
-# A. Custom JWT Token Serializer ya Login inayotumia Username na Password
+# A. Custom JWT Token Serializer ya Login
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
-        data = super().validate(attrs)
-        
-        # 1. ZUIA LOGIN KAMA AKAUNTI IMEFUNGWA/IMEZIMWA (is_active=False)
-        if not self.user.is_active:
-            raise serializers.ValidationError({
-                "detail": "Akaunti hii imefungwa. Hauna ruhusa ya kuingia kwenye mfumo."
-            })
+        username = attrs.get("username")
+        password = attrs.get("password")
 
-        # 2. Taarifa za mtumiaji na biashara anayoimiliki/anayoifanyia kazi
+        # 1. Kagua kama mtumiaji yupo kwenye Database na Hali ya Akaunti yake KABLA ya SimpleJWT
+        try:
+            user_obj = User.objects.get(username=username)
+            if not user_obj.is_active:
+                raise serializers.ValidationError({
+                    "detail": "Akaunti hii imefungwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
+                })
+        except User.DoesNotExist:
+            pass # Acha super().validate() handles invalid credentials kwa usalama
+
+        # 2. Piga Authentication ya SimpleJWT
+        data = super().validate(attrs)
+
+        # 3. Weka Taarifa za Ziada kwenye Response Data
         data['user_id'] = str(self.user.id)
         data['username'] = self.user.username
         data['role'] = self.user.role
@@ -50,7 +58,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['business_name'] = self.user.business.name if self.user.business else None
         data['business_type'] = self.user.business.business_type if self.user.business else None
         
-        # Siku zilizobaki, Hali ya Trial, na Mipangilio ya Cashier (Permissions Toggles)
         if self.user.business:
             data['days_left_in_trial'] = self.user.business.days_left_in_trial
             data['has_active_access'] = self.user.business.has_active_access
@@ -66,7 +73,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
-# Class ndogo ya ku-limit Login Request kwa sekunde/dakika
 class LoginRateThrottle(AnonRateThrottle):
     rate = '10/minute'
 
@@ -151,7 +157,7 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# E. API YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
+# E. API YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS
 class VerifyPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -186,7 +192,7 @@ class SetSettingsPasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# G. API YA KUREJESHA NENOSIRI LA SETTINGS PINDI UTAKAPOISAHAU (RESET SETTINGS PASSCODE)
+# G. API YA KUREJESHA NENOSIRI LA SETTINGS
 class ResetSettingsPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -252,7 +258,7 @@ class ManageCashiersView(APIView):
         if not business:
             return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Onyesha wafanyakazi walio hai (is_active=True) pekee
+        # Chukua Cashiers walio hai pekee (is_active=True)
         cashiers = User.objects.filter(business=business, role='cashier', is_active=True).order_by('-date_joined')
         serializer = CashierListSerializer(cashiers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -282,18 +288,23 @@ class DeleteCashierView(APIView):
 
         business = getattr(request.user, 'business', None)
         try:
+            # Tafuta mtumiaji huyo bila kujali kama is_active ni True au False
             cashier = User.objects.get(id=pk, business=business, role='cashier')
             
-            # 1. Jaribu kumfuta kabisa database (kama hana miamala yoyote iliyofungamanishwa naye)
+            # 1. Mzime instantly na badili password yake ili Token / Session zivunjike
+            cashier.is_active = False
+            cashier.set_unusable_password() 
+            random_suffix = uuid.uuid4().hex[:8]
+            cashier.username = f"deleted_{random_suffix}_{cashier.username}"
+            cashier.save()
+
+            # 2. Jaribu kumfuta kabisa database (kama hakuna Foreign Key constraint)
             try:
                 cashier.delete()
-                return Response({"message": "Mfanyakazi amefutwa kikamilifu."}, status=status.HTTP_200_OK)
             except Exception:
-                # 2. Kama ana miamala (Protected Foreign Key), mzime na kubadilisha username yake ili asilogin na asigongane na usajili mpya
-                cashier.is_active = False
-                cashier.username = f"deleted_{uuid.uuid4().hex[:6]}_{cashier.username}"
-                cashier.save()
-                return Response({"message": "Akaunti ya mfanyakazi imefungwa na kuondolewa kikamilifu."}, status=status.HTTP_200_OK)
+                pass
+
+            return Response({"message": "Mfanyakazi amefutwa na akaunti yake imefungwa kikamilifu."}, status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
