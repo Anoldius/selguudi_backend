@@ -28,29 +28,35 @@ from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_i
 User = get_user_model()
 
 
-# A. Custom JWT Token Serializer ya Login
+# A. CUSTOM JWT TOKEN SERIALIZER (KUZUIA LOGIN KWA DEACTIVATED USERS)
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
-        username = attrs.get("username")
-        password = attrs.get("password")
+        username = attrs.get('username')
+        password = attrs.get('password')
 
-        # 1. Kagua kama mtumiaji yupo kwenye Database na Hali ya Akaunti yake KABLA ya SimpleJWT
+        # 1. Tafuta Mtumiaji kwenye Database Kwanza
         try:
-            user_obj = User.objects.get(username=username)
-            if not user_obj.is_active:
-                raise serializers.ValidationError({
-                    "detail": "Akaunti hii imefungwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
-                })
+            user_obj = User.objects.get(username__iexact=username)
         except User.DoesNotExist:
-            pass # Acha super().validate() handles invalid credentials kwa usalama
+            raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
 
-        # 2. Piga Authentication ya SimpleJWT
+        # 2. ZUIA MOJA KWA MOJA KAMA AKAUNTI HAIPO HAI (is_active = False)
+        if not user_obj.is_active:
+            raise serializers.ValidationError({
+                "detail": "Akaunti hii imezimwa/imefutwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
+            })
+
+        # 3. Hakiki Password
+        if not user_obj.check_password(password):
+            raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
+
+        # 4. Piga Validation ya Kawaida ya SimpleJWT kutengeneza Token
         data = super().validate(attrs)
 
-        # 3. Weka Taarifa za Ziada kwenye Response Data
+        # 5. Ongeza Taarifa za Mtumiaji na Mipangilio kwenye Response
         data['user_id'] = str(self.user.id)
         data['username'] = self.user.username
         data['role'] = self.user.role
@@ -82,14 +88,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
 
 
-# B. API ya Kujisajili Biashara na Mmiliki
 class RegisterBusinessView(generics.CreateAPIView):
     queryset = Business.objects.all()
     serializer_class = RegisterBusinessSerializer
     permission_classes = [permissions.AllowAny]
 
 
-# C. API ya Kuangalia Profile ya Mtumiaji aliye-login
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -98,7 +102,6 @@ class UserProfileView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# C2. API YA KUBADILISHA JINA LA DUKA (BUSINESS NAME UPDATE)
 class UpdateBusinessNameView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -123,7 +126,6 @@ class UpdateBusinessNameView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-# D. API ya Kuangalia Hali ya Billing & Trial
 class BillingStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -157,7 +159,6 @@ class BillingStatusView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# E. API YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS
 class VerifyPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -171,7 +172,6 @@ class VerifyPasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# F. API YA KUTENGENEZA / KUBADILISHA NENOSIRI LA SETTINGS
 class SetSettingsPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -192,7 +192,6 @@ class SetSettingsPasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# G. API YA KUREJESHA NENOSIRI LA SETTINGS
 class ResetSettingsPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -213,7 +212,6 @@ class ResetSettingsPasswordView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# H. API YA KUANGALIA NA KUBADILISHA MIPANGILIO YA HAKI ZA CASHIER
 class BusinessPermissionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -246,7 +244,6 @@ class BusinessPermissionsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# I. API ya Kuona Orodha na Kusajili Mfanyakazi Mpya (Cashier)
 class ManageCashiersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -258,7 +255,7 @@ class ManageCashiersView(APIView):
         if not business:
             return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Chukua Cashiers walio hai pekee (is_active=True)
+        # Leta Wafanyakazi WALIO HAI PEEKE (is_active = True)
         cashiers = User.objects.filter(business=business, role='cashier', is_active=True).order_by('-date_joined')
         serializer = CashierListSerializer(cashiers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -278,7 +275,7 @@ class ManageCashiersView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# J. API ya Kumuondoa/Kufuta Mfanyakazi
+# J. API YA KUMUONDOA / KUFUTA MFANYAKAZI
 class DeleteCashierView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -288,20 +285,20 @@ class DeleteCashierView(APIView):
 
         business = getattr(request.user, 'business', None)
         try:
-            # Tafuta mtumiaji huyo bila kujali kama is_active ni True au False
             cashier = User.objects.get(id=pk, business=business, role='cashier')
             
-            # 1. Mzime instantly na badili password yake ili Token / Session zivunjike
+            # 1. Mzime akaunti, haribu password yake, na badilisha username instantly
             cashier.is_active = False
-            cashier.set_unusable_password() 
-            random_suffix = uuid.uuid4().hex[:8]
-            cashier.username = f"deleted_{random_suffix}_{cashier.username}"
+            cashier.set_unusable_password() # Inafanya password yake isiweze ku-match kitu chochote
+            random_tag = uuid.uuid4().hex[:6]
+            cashier.username = f"deleted_{random_tag}_{cashier.username}"
             cashier.save()
 
-            # 2. Jaribu kumfuta kabisa database (kama hakuna Foreign Key constraint)
+            # 2. Jaribu kumfuta kabisa kwenye Database
             try:
                 cashier.delete()
             except Exception:
+                # Kama ana miamala (Foreign Key Protected), ataendelea kubaki akiwa is_active=False
                 pass
 
             return Response({"message": "Mfanyakazi amefutwa na akaunti yake imefungwa kikamilifu."}, status=status.HTTP_200_OK)
@@ -310,7 +307,6 @@ class DeleteCashierView(APIView):
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
 
-# K. API ya Kuanzisha Malipo ya PesaPal
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -365,7 +361,6 @@ class InitiateSubscriptionPaymentView(APIView):
         return Response({"error": "PesaPal imekataa kutengeneza Order Link."}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# L. API ya Ku-handle PesaPal IPN Notification Callback
 class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 
