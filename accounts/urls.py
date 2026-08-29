@@ -31,7 +31,7 @@ urlpatterns = [
 
     # Cashier Management Endpoints (Kusajili na Kufuta Wafanyakazi)
     path('cashiers/', ManageCashiersView.as_view(), name='manage_cashiers'),
-    path('cashiers/<int:pk>/', DeleteCashierView.as_view(), name='delete_cashier'),
+    path('cashiers/<str:pk>/', DeleteCashierView.as_view(), name='delete_cashier'),
 
     # Billing & Subscription Endpoints
     path('billing/status/', BillingStatusView.as_view(), name='billing_status'),

@@ -2,7 +2,8 @@ import uuid
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from rest_framework import status, generics, permissions, serializers
 from rest_framework.response import Response
@@ -23,7 +24,6 @@ from .serializers import (
     CashierListSerializer
 )
 from .models import Business, SubscriptionPayment
-from .pesapal import get_pesapal_token, submit_pesapal_order, register_pesapal_ipn
 
 User = get_user_model()
 
@@ -275,7 +275,7 @@ class ManageCashiersView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# J. API YA KUMUONDOA / KUFUTA MFANYAKAZI
+# J. API YA KUMUONDOA / KUFUTA MFANYAKAZI (FIXED: KUZUIA DB TRANSACTION ROLLBACK)
 class DeleteCashierView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -287,19 +287,12 @@ class DeleteCashierView(APIView):
         try:
             cashier = User.objects.get(id=pk, business=business, role='cashier')
             
-            # 1. Mzime akaunti, haribu password yake, na badilisha username instantly
+            # Hatua ya 1: Haribu credentials zake na kumzima papo hapo
             cashier.is_active = False
-            cashier.set_unusable_password() # Inafanya password yake isiweze ku-match kitu chochote
+            cashier.set_unusable_password()
             random_tag = uuid.uuid4().hex[:6]
             cashier.username = f"deleted_{random_tag}_{cashier.username}"
-            cashier.save()
-
-            # 2. Jaribu kumfuta kabisa kwenye Database
-            try:
-                cashier.delete()
-            except Exception:
-                # Kama ana miamala (Foreign Key Protected), ataendelea kubaki akiwa is_active=False
-                pass
+            cashier.save() # Inahifadhiwa 100% bila rollback
 
             return Response({"message": "Mfanyakazi amefutwa na akaunti yake imefungwa kikamilifu."}, status=status.HTTP_200_OK)
 
