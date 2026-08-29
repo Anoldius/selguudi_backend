@@ -7,10 +7,22 @@ from .models import Category, Product
 from .serializers import CategorySerializer, ProductSerializer
 
 
+# PERMISSION MAALUM: Cashier anaona tu (GET), lakini Bosi (Owner) ndiye anayeongeza, ku-edit au kufuta
+class IsOwnerOrReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        # Njia za kusoma tu (GET, HEAD, OPTIONS) zinaruhusiwa kwa wote walio-login
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        # Njia za kubadilisha au kufuta (POST, PUT, PATCH, DELETE) ni kwa Owner pekee
+        return getattr(request.user, 'role', '') == 'owner'
+
+
 # 1. ViewSet ya Category
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsOwnerOrReadOnly]
     pagination_class = None
 
     def get_queryset(self):
@@ -32,7 +44,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 # 2. ViewSet ya Product (Bidhaa na Stoko)
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsOwnerOrReadOnly]
     pagination_class = None
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

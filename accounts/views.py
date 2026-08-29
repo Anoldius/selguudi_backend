@@ -246,7 +246,8 @@ class ManageCashiersView(APIView):
         if not business:
             return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
-        cashiers = User.objects.filter(business=business, role='cashier').order_by('-date_joined')
+        # Onyesha wafanyakazi walio hai (is_active=True) pekee
+        cashiers = User.objects.filter(business=business, role='cashier', is_active=True).order_by('-date_joined')
         serializer = CashierListSerializer(cashiers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -276,8 +277,18 @@ class DeleteCashierView(APIView):
         business = getattr(request.user, 'business', None)
         try:
             cashier = User.objects.get(id=pk, business=business, role='cashier')
-            cashier.delete()
-            return Response({"message": "Mfanyakazi amefutwa kikamilifu."}, status=status.HTTP_200_OK)
+            
+            # 1. Zima uwezo wake wa kulogin mara moja!
+            cashier.is_active = False
+            cashier.save()
+            
+            # 2. Jaribu kumfuta database kabisa (kama hana miamala iliyofungwa naye)
+            try:
+                cashier.delete()
+            except Exception:
+                pass
+
+            return Response({"message": "Mfanyakazi amefutwa na akaunti yake imefungwa kikamilifu."}, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
