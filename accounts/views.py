@@ -36,7 +36,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
         
-        # Taarifa za mtumiaji na biashara anayoimiliki/anayoifanyia kazi
+        # 1. ZUIA LOGIN KAMA AKAUNTI IMEFUNGWA/IMEZIMWA (is_active=False)
+        if not self.user.is_active:
+            raise serializers.ValidationError({
+                "detail": "Akaunti hii imefungwa. Hauna ruhusa ya kuingia kwenye mfumo."
+            })
+
+        # 2. Taarifa za mtumiaji na biashara anayoimiliki/anayoifanyia kazi
         data['user_id'] = str(self.user.id)
         data['username'] = self.user.username
         data['role'] = self.user.role
@@ -278,17 +284,17 @@ class DeleteCashierView(APIView):
         try:
             cashier = User.objects.get(id=pk, business=business, role='cashier')
             
-            # 1. Zima uwezo wake wa kulogin mara moja!
-            cashier.is_active = False
-            cashier.save()
-            
-            # 2. Jaribu kumfuta database kabisa (kama hana miamala iliyofungwa naye)
+            # 1. Jaribu kumfuta kabisa database (kama hana miamala yoyote iliyofungamanishwa naye)
             try:
                 cashier.delete()
+                return Response({"message": "Mfanyakazi amefutwa kikamilifu."}, status=status.HTTP_200_OK)
             except Exception:
-                pass
+                # 2. Kama ana miamala (Protected Foreign Key), mzime na kubadilisha username yake ili asilogin na asigongane na usajili mpya
+                cashier.is_active = False
+                cashier.username = f"deleted_{uuid.uuid4().hex[:6]}_{cashier.username}"
+                cashier.save()
+                return Response({"message": "Akaunti ya mfanyakazi imefungwa na kuondolewa kikamilifu."}, status=status.HTTP_200_OK)
 
-            return Response({"message": "Mfanyakazi amefutwa na akaunti yake imefungwa kikamilifu."}, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
