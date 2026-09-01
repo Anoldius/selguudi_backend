@@ -220,15 +220,15 @@ class BillingStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if not business.subscription_end_date and business.trial_start_date:
-            expected_trial_end = business.trial_start_date + timedelta(days=30)
-            if business.trial_end_date != expected_trial_end:
-                business.trial_end_date = expected_trial_end
-                business.save()
+        # Hakikisha trial_end_date ipo sahihi (siku 30 tangu tarehe ya usajili wa duka)
+        if not business.trial_end_date and business.trial_start_date:
+            business.trial_end_date = business.trial_start_date + timedelta(days=30)
+            business.save()
 
+        # Tumia property ya Model kukotoa siku halisi kulingana na tarehe ya leo
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial,
+            'days_left_in_trial': business.days_left_in_trial,  # Imesomwa moja kwa moja kutoka kwenye Model
             'has_active_access': business.has_active_access,
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,
