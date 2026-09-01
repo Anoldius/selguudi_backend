@@ -100,6 +100,25 @@ def submit_pesapal_order(token, order_payload):
     return None
 
 
+def get_pesapal_transaction_status(token, order_tracking_id):
+    """Kagua Hali ya Muamala (Transaction Status) Kutoka PesaPal V3 API"""
+    url = f"{get_pesapal_base_url()}/api/Transactions/GetTransactionStatus?orderTrackingId={order_tracking_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=12)
+        if response.status_code == 200:
+            return response.json()
+        print(f"PesaPal Transaction Status Error [{response.status_code}]: {response.text}")
+    except Exception as e:
+        print(f"PesaPal Transaction Status Exception: {str(e)}")
+    return None
+
+
 # ==========================================
 # 1. CUSTOM JWT TOKEN SERIALIZER (BULLETPROOF LOGIN)
 # ==========================================
@@ -422,7 +441,6 @@ class InitiateSubscriptionPaymentView(APIView):
             except Exception as e:
                 print("IPN Reg Exception:", e)
 
-        # Inasoma phone kutoka kwa User au Business bila kuleta AttributeError
         user_phone = getattr(request.user, 'phone', None) or getattr(business, 'phone', None) or "0700000000"
         user_email = request.user.email if getattr(request.user, 'email', None) else "info@selguudi.com"
         first_name = getattr(request.user, 'first_name', '') or request.user.username
@@ -456,26 +474,50 @@ class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        pesapal_tracking_id = request.GET.get('OrderTrackingId')
-        merchant_ref = request.GET.get('OrderMerchantReference')
+        pesapal_tracking_id = request.GET.get('OrderTrackingId') or request.GET.get('orderTrackingId')
+        merchant_ref = request.GET.get('OrderMerchantReference') or request.GET.get('merchant_ref')
 
-        if merchant_ref:
-            try:
-                payment = SubscriptionPayment.objects.get(merchant_reference=merchant_ref)
-                payment.status = 'COMPLETED'
-                payment.pesapal_order_tracking_id = pesapal_tracking_id
-                payment.save()
+        if not merchant_ref:
+            return Response({"status": "FAILED", "detail": "Missing merchant reference"}, status=status.HTTP_400_BAD_REQUEST)
 
-                business = payment.business
-                now = timezone.now()
-                start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now
+        try:
+            payment = SubscriptionPayment.objects.get(merchant_reference=merchant_ref)
+        except SubscriptionPayment.DoesNotExist:
+            return Response({"status": "FAILED", "detail": "Payment record not found"}, status=status.HTTP_404_NOT_FOUND)
 
-                business.subscription_end_date = start_from + timedelta(days=30)
-                business.is_active_subscription = True
-                business.save()
+        # Kama pesapal_tracking_id ipo, kagua status kutoka PesaPal API
+        if pesapal_tracking_id:
+            token = get_pesapal_token()
+            if token:
+                status_res = get_pesapal_transaction_status(token, pesapal_tracking_id)
+                
+                # Check status halisi iliyorudishwa na PesaPal V3
+                payment_status = None
+                if status_res and isinstance(status_res, dict):
+                    payment_status = status_res.get('payment_status_description') or status_res.get('status')
 
-                return Response({"status": "SUCCESS", "message": "Subscription updated successfully."})
-            except SubscriptionPayment.DoesNotExist:
-                pass
+                # Kama malipo SIO 'COMPLETED' (mfano mteja ali-exit, au aliweka PIN makosa), KATA
+                if payment_status != 'COMPLETED':
+                    payment.status = 'FAILED'
+                    payment.pesapal_order_tracking_id = pesapal_tracking_id
+                    payment.save()
+                    return Response({
+                        "status": "FAILED", 
+                        "message": f"Malipo hayajakamilika. Hali: {payment_status or 'CANCELLED/PENDING'}"
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"status": "FAILED"}, status=status.HTTP_400_BAD_REQUEST)
+        # IKIWA HALI HALISI NI 'COMPLETED' NDIIPO UONGEZE SIKU 30
+        payment.status = 'COMPLETED'
+        if pesapal_tracking_id:
+            payment.pesapal_order_tracking_id = pesapal_tracking_id
+        payment.save()
+
+        business = payment.business
+        now = timezone.now()
+        start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now
+
+        business.subscription_end_date = start_from + timedelta(days=30)
+        business.is_active_subscription = True
+        business.save()
+
+        return Response({"status": "SUCCESS", "message": "Subscription updated successfully."}, status=status.HTTP_200_OK)
