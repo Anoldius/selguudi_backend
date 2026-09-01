@@ -1,5 +1,4 @@
 import uuid
-import requests
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
@@ -26,132 +25,73 @@ from .serializers import (
 )
 from .models import Business, SubscriptionPayment
 
+# Import Helper Functions za PesaPal kwa Salama
+try:
+    from .pesapal import get_pesapal_token, register_pesapal_ipn, submit_pesapal_order
+except Exception:
+    try:
+        from pesapal import get_pesapal_token, register_pesapal_ipn, submit_pesapal_order
+    except Exception:
+        def get_pesapal_token(): return None
+        def register_pesapal_ipn(token, url): return None
+        def submit_pesapal_order(token, payload): return None
+
 User = get_user_model()
 
 
-# ==========================================
-# HELPER FUNCTIONS ZA PESAPAL V3 INTEGRATION
-# ==========================================
-
-def get_pesapal_base_url():
-    """Inarudisha Base URL kulingana na Settings (Live au Sandbox)"""
-    return getattr(settings, 'PESAPAL_BASE_URL', 'https://cyb3rhq.pesapal.com/pesapalv3').rstrip('/')
-
-def get_pesapal_token():
-    """Omba Bearer Token kutoka PesaPal v3 API"""
-    url = f"{get_pesapal_base_url()}/api/Auth/RequestToken"
-    payload = {
-        "consumer_key": getattr(settings, 'PESAPAL_CONSUMER_KEY', ''),
-        "consumer_secret": getattr(settings, 'PESAPAL_CONSUMER_SECRET', '')
-    }
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=12)
-        if response.status_code == 200:
-            return response.json().get('token')
-        print(f"PesaPal Token Error [{response.status_code}]: {response.text}")
-    except Exception as e:
-        print(f"PesaPal Token Request Exception: {str(e)}")
-    return None
-
-
-def register_pesapal_ipn(token, ipn_url):
-    """Sajili IPN Callback URL kwenye PesaPal kama haijatengenezwa"""
-    url = f"{get_pesapal_base_url()}/api/URLSetup/RegisterIPN"
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-    payload = {
-        "url": ipn_url,
-        "ipn_notification_type": "GET"
-    }
-
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=12)
-        if response.status_code == 200:
-            return response.json().get('ipn_id')
-        print(f"PesaPal IPN Reg Error [{response.status_code}]: {response.text}")
-    except Exception as e:
-        print(f"PesaPal IPN Reg Exception: {str(e)}")
-    return None
-
-
-def submit_pesapal_order(token, order_payload):
-    """Tuma Ombi la Kutengeneza Link ya Malipo (Order Request)"""
-    url = f"{get_pesapal_base_url()}/api/Transactions/SubmitOrderRequest"
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-
-    try:
-        response = requests.post(url, json=order_payload, headers=headers, timeout=12)
-        if response.status_code == 200:
-            return response.json()
-        print(f"PesaPal Order Submit Error [{response.status_code}]: {response.text}")
-    except Exception as e:
-        print(f"PesaPal Order Exception: {str(e)}")
-    return None
-
-
-# ==========================================
-# VIEWS ZA USER AUTH & BUSINESS MANAGEMENT
-# ==========================================
-
+# A. BULLETPROOF JWT TOKEN SERIALIZER (KUZUIA LOGIN CRASHES)
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
-        username = attrs.get('username')
-        password = attrs.get('password')
+        username = attrs.get('username', '').strip()
+        password = attrs.get('password', '')
 
+        # 1. Hakiki kama Mtumiaji Yupo kwenye DB
         try:
             user_obj = User.objects.get(username__iexact=username)
         except User.DoesNotExist:
-            raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
+            raise serializers.ValidationError("Username au Password si sahihi.")
 
-        if not user_obj.is_active:
-            raise serializers.ValidationError({
-                "detail": "Akaunti hii imezimwa/imefutwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
-            })
+        # 2. Zuia kama Akaunti Imezimwa
+        if not getattr(user_obj, 'is_active', True):
+            raise serializers.ValidationError("Akaunti hii imezimwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo.")
 
+        # 3. Hakiki Password
         if not user_obj.check_password(password):
-            raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
+            raise serializers.ValidationError("Username au Password si sahihi.")
 
+        # 4. Piga Validation ya SimpleJWT
         data = super().validate(attrs)
 
-        data['user_id'] = str(self.user.id)
-        data['username'] = self.user.username
-        data['role'] = self.user.role
-        data['business_id'] = str(self.user.business.id) if self.user.business else None
-        data['business_name'] = self.user.business.name if self.user.business else None
-        data['business_type'] = self.user.business.business_type if self.user.business else None
+        # 5. Chukua Taarifa za User & Business bila Kucrash hata kama hazipo
+        business = getattr(user_obj, 'business', None)
+
+        data['user_id'] = str(user_obj.id)
+        data['username'] = user_obj.username
+        data['role'] = getattr(user_obj, 'role', 'owner')
+        data['business_id'] = str(business.id) if business else None
+        data['business_name'] = business.name if business else None
+        data['business_type'] = getattr(business, 'business_type', '') if business else None
         
-        if self.user.business:
-            data['days_left_in_trial'] = self.user.business.days_left_in_trial
-            data['has_active_access'] = self.user.business.has_active_access
-            data['has_settings_password'] = bool(self.user.business.settings_password)
+        if business:
+            data['days_left_in_trial'] = getattr(business, 'days_left_in_trial', 30)
+            data['has_active_access'] = getattr(business, 'has_active_access', True)
+            data['has_settings_password'] = bool(getattr(business, 'settings_password', None))
             data['permissions'] = {
-                'show_profit_to_cashier': self.user.business.show_profit_to_cashier,
-                'allow_cashier_debts': self.user.business.allow_cashier_debts,
-                'allow_cashier_custom_price': self.user.business.allow_cashier_custom_price,
-                'show_buying_price_to_cashier': self.user.business.show_buying_price_to_cashier,
-                'show_stock_summary_cards': self.user.business.show_stock_summary_cards,
+                'show_profit_to_cashier': getattr(business, 'show_profit_to_cashier', False),
+                'allow_cashier_debts': getattr(business, 'allow_cashier_debts', True),
+                'allow_cashier_custom_price': getattr(business, 'allow_cashier_custom_price', True),
+                'show_buying_price_to_cashier': getattr(business, 'show_buying_price_to_cashier', False),
+                'show_stock_summary_cards': getattr(business, 'show_stock_summary_cards', True),
             }
             
         return data
 
 
 class LoginRateThrottle(AnonRateThrottle):
-    rate = '10/minute'
+    rate = '15/minute'
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -177,7 +117,7 @@ class UpdateBusinessNameView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kubadilisha jina la duka."}, status=status.HTTP_403_FORBIDDEN)
 
         business = getattr(request.user, 'business', None)
@@ -218,8 +158,8 @@ class BillingStatusView(APIView):
 
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial,
-            'has_active_access': business.has_active_access,
+            'days_left_in_trial': getattr(business, 'days_left_in_trial', 30),
+            'has_active_access': getattr(business, 'has_active_access', True),
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,
             'subscription_end_date': business.subscription_end_date,
@@ -247,7 +187,7 @@ class SetSettingsPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kuweka Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
 
         business = getattr(request.user, 'business', None)
@@ -267,7 +207,7 @@ class ResetSettingsPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kubadilisha Nenosiri la Mipangilio."}, status=status.HTTP_403_FORBIDDEN)
 
         business = getattr(request.user, 'business', None)
@@ -295,7 +235,7 @@ class BusinessPermissionsView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({
                 "error": "Hauna mamlaka ya kubadilisha mipangilio ya biashara."
             }, status=status.HTTP_403_FORBIDDEN)
@@ -319,7 +259,7 @@ class ManageCashiersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kuona orodha ya wafanyakazi."}, status=status.HTTP_403_FORBIDDEN)
 
         business = getattr(request.user, 'business', None)
@@ -331,7 +271,7 @@ class ManageCashiersView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kusajili mfanyakazi mpya."}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = CreateCashierSerializer(data=request.data, context={'request': request})
@@ -349,7 +289,7 @@ class DeleteCashierView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, pk):
-        if request.user.role != 'owner':
+        if getattr(request.user, 'role', '') != 'owner':
             return Response({"error": "Bosi pekee ndiye anayeweza kufuta mfanyakazi."}, status=status.HTTP_403_FORBIDDEN)
 
         business = getattr(request.user, 'business', None)
@@ -368,10 +308,7 @@ class DeleteCashierView(APIView):
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
 
-# ==========================================
-# VIEWS ZA PAYMENT GATEWAY (PESAPAL V3)
-# ==========================================
-
+# PAYMENT VIEW
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -382,15 +319,18 @@ class InitiateSubscriptionPaymentView(APIView):
 
         merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
 
-        # 1. Pata Token kutoka PesaPal
-        token = get_pesapal_token()
+        try:
+            token = get_pesapal_token()
+        except Exception as e:
+            print("PesaPal Token Exception:", e)
+            token = None
+
         if not token:
             return Response(
-                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha PESAPAL_CONSUMER_KEY na SECRET zipo sahihi kwenye Environment Variables."}, 
+                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha PESAPAL_CONSUMER_KEY na SECRET zipo sahihi."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Tengeneza Payment Record kwenye Database
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
@@ -398,15 +338,17 @@ class InitiateSubscriptionPaymentView(APIView):
             status='PENDING'
         )
 
-        # 3. Pata IPN Registration ID
         ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
         if not ipn_id:
-            ipn_url = getattr(settings, 'PESAPAL_IPN_URL', 'https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/')
-            ipn_id = register_pesapal_ipn(token, ipn_url)
+            ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
+            try:
+                ipn_id = register_pesapal_ipn(token, ipn_url)
+            except Exception as e:
+                print("IPN Reg Fail:", e)
 
-        # Chukua Namba ya Simu kwa usalama
-        user_phone = getattr(request.user, 'phone', None) or getattr(request.user, 'phone_number', None) or "0700000000"
-        user_email = request.user.email if request.user.email else "info@selguudi.com"
+        user_phone = getattr(request.user, 'phone_number', None) or getattr(request.user, 'phone', None) or "0700000000"
+        user_email = request.user.email if getattr(request.user, 'email', None) else "info@selguudi.com"
+        first_name = getattr(request.user, 'first_name', '') or request.user.username
 
         order_payload = {
             "id": merchant_ref,
@@ -418,20 +360,23 @@ class InitiateSubscriptionPaymentView(APIView):
             "billing_address": {
                 "email_address": user_email,
                 "phone_number": str(user_phone),
-                "first_name": request.user.username,
+                "first_name": first_name,
                 "last_name": "Owner"
             }
         }
 
-        pesapal_res = submit_pesapal_order(token, order_payload)
+        try:
+            pesapal_res = submit_pesapal_order(token, order_payload)
+        except Exception as e:
+            print("Submit Order Exception:", e)
+            pesapal_res = None
 
         if pesapal_res and 'redirect_url' in pesapal_res:
             payment.pesapal_order_tracking_id = pesapal_res.get('order_tracking_id')
             payment.save()
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
-        error_detail = pesapal_res.get('error', {}).get('message') if pesapal_res else "PesaPal API Error"
-        return Response({"error": f"PesaPal imekataa kutengeneza Order Link: {error_detail}"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "PesaPal imekataa kutengeneza Order Link. Hakikisha Credentials za PesaPal ni za Live/Sandbox sahihi."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PesaPalIPNCallbackView(APIView):
