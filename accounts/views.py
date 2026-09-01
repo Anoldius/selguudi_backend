@@ -1,4 +1,5 @@
 import uuid
+import requests
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
@@ -25,17 +26,85 @@ from .serializers import (
 )
 from .models import Business, SubscriptionPayment
 
-# IMPORT HELPER FUNCTIONS ZAKO KUTOKA KWENYE pesapal.py
-# (Kama pesapal.py ipo folder moja na views.py tumia .pesapal, au badilisha mfano: from myapp.pesapal import ...)
-try:
-    from .pesapal import get_pesapal_token, register_pesapal_ipn, submit_pesapal_order
-except ImportError:
-    from pesapal import get_pesapal_token, register_pesapal_ipn, submit_pesapal_order
-
 User = get_user_model()
 
 
-# A. CUSTOM JWT TOKEN SERIALIZER
+# ==========================================
+# HELPER FUNCTIONS ZA PESAPAL V3 INTEGRATION
+# ==========================================
+
+def get_pesapal_base_url():
+    """Inarudisha Base URL kulingana na Settings (Live au Sandbox)"""
+    return getattr(settings, 'PESAPAL_BASE_URL', 'https://cyb3rhq.pesapal.com/pesapalv3').rstrip('/')
+
+def get_pesapal_token():
+    """Omba Bearer Token kutoka PesaPal v3 API"""
+    url = f"{get_pesapal_base_url()}/api/Auth/RequestToken"
+    payload = {
+        "consumer_key": getattr(settings, 'PESAPAL_CONSUMER_KEY', ''),
+        "consumer_secret": getattr(settings, 'PESAPAL_CONSUMER_SECRET', '')
+    }
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=12)
+        if response.status_code == 200:
+            return response.json().get('token')
+        print(f"PesaPal Token Error [{response.status_code}]: {response.text}")
+    except Exception as e:
+        print(f"PesaPal Token Request Exception: {str(e)}")
+    return None
+
+
+def register_pesapal_ipn(token, ipn_url):
+    """Sajili IPN Callback URL kwenye PesaPal kama haijatengenezwa"""
+    url = f"{get_pesapal_base_url()}/api/URLSetup/RegisterIPN"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    payload = {
+        "url": ipn_url,
+        "ipn_notification_type": "GET"
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=12)
+        if response.status_code == 200:
+            return response.json().get('ipn_id')
+        print(f"PesaPal IPN Reg Error [{response.status_code}]: {response.text}")
+    except Exception as e:
+        print(f"PesaPal IPN Reg Exception: {str(e)}")
+    return None
+
+
+def submit_pesapal_order(token, order_payload):
+    """Tuma Ombi la Kutengeneza Link ya Malipo (Order Request)"""
+    url = f"{get_pesapal_base_url()}/api/Transactions/SubmitOrderRequest"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+
+    try:
+        response = requests.post(url, json=order_payload, headers=headers, timeout=12)
+        if response.status_code == 200:
+            return response.json()
+        print(f"PesaPal Order Submit Error [{response.status_code}]: {response.text}")
+    except Exception as e:
+        print(f"PesaPal Order Exception: {str(e)}")
+    return None
+
+
+# ==========================================
+# VIEWS ZA USER AUTH & BUSINESS MANAGEMENT
+# ==========================================
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
@@ -299,7 +368,10 @@ class DeleteCashierView(APIView):
             return Response({"error": "Mfanyakazi hajapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
 
-# PAYMENT VIEW ILIYOBORESHWA ILI KUZUIA CODE 500 CRASH
+# ==========================================
+# VIEWS ZA PAYMENT GATEWAY (PESAPAL V3)
+# ==========================================
+
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -310,20 +382,15 @@ class InitiateSubscriptionPaymentView(APIView):
 
         merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
 
-        # 1. Pata Token Kutoka pesapal.py
-        try:
-            token = get_pesapal_token()
-        except Exception as e:
-            print("PesaPal Token Exception:", e)
-            token = None
-
+        # 1. Pata Token kutoka PesaPal
+        token = get_pesapal_token()
         if not token:
             return Response(
-                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha PESAPAL_CONSUMER_KEY na SECRET zipo sahihi."}, 
+                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha PESAPAL_CONSUMER_KEY na SECRET zipo sahihi kwenye Environment Variables."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Rekodi Payment Kwenye DB
+        # 2. Tengeneza Payment Record kwenye Database
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
@@ -331,19 +398,15 @@ class InitiateSubscriptionPaymentView(APIView):
             status='PENDING'
         )
 
-        # 3. Handle IPN ID
+        # 3. Pata IPN Registration ID
         ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
         if not ipn_id:
-            ipn_url = "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/"
-            try:
-                ipn_id = register_pesapal_ipn(token, ipn_url)
-            except Exception as e:
-                print("IPN Reg Fail:", e)
+            ipn_url = getattr(settings, 'PESAPAL_IPN_URL', 'https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/')
+            ipn_id = register_pesapal_ipn(token, ipn_url)
 
-        # Chukua Namba ya Simu kwa usalama kuzuia AttributeError
-        user_phone = getattr(request.user, 'phone_number', None) or getattr(request.user, 'phone', None) or "0700000000"
-        user_email = request.user.email if getattr(request.user, 'email', None) else "info@selguudi.com"
-        first_name = getattr(request.user, 'first_name', '') or request.user.username
+        # Chukua Namba ya Simu kwa usalama
+        user_phone = getattr(request.user, 'phone', None) or getattr(request.user, 'phone_number', None) or "0700000000"
+        user_email = request.user.email if request.user.email else "info@selguudi.com"
 
         order_payload = {
             "id": merchant_ref,
@@ -355,24 +418,20 @@ class InitiateSubscriptionPaymentView(APIView):
             "billing_address": {
                 "email_address": user_email,
                 "phone_number": str(user_phone),
-                "first_name": first_name,
+                "first_name": request.user.username,
                 "last_name": "Owner"
             }
         }
 
-        # 4. Tuma Order na Pata Link
-        try:
-            pesapal_res = submit_pesapal_order(token, order_payload)
-        except Exception as e:
-            print("Submit Order Exception:", e)
-            pesapal_res = None
+        pesapal_res = submit_pesapal_order(token, order_payload)
 
         if pesapal_res and 'redirect_url' in pesapal_res:
             payment.pesapal_order_tracking_id = pesapal_res.get('order_tracking_id')
             payment.save()
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
-        return Response({"error": "PesaPal imekataa kutengeneza Order Link. Hakikisha Credentials za PesaPal ni za Live/Sandbox sahihi."}, status=status.HTTP_400_BAD_REQUEST)
+        error_detail = pesapal_res.get('error', {}).get('message') if pesapal_res else "PesaPal API Error"
+        return Response({"error": f"PesaPal imekataa kutengeneza Order Link: {error_detail}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PesaPalIPNCallbackView(APIView):
