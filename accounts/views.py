@@ -138,7 +138,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
 
         # 2. ZUIA MOJA KWA MOJA KAMA AKAUNTI HAIPO HAI (is_active = False)
-        if not user_obj.is_active:
+        if not getattr(user_obj, 'is_active', True):
             raise serializers.ValidationError({
                 "detail": "Akaunti hii imezimwa/imefutwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
             })
@@ -147,31 +147,34 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user_obj.check_password(password):
             raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
 
-        # 4. Piga Validation ya Kawaida ya SimpleJWT kutengeneza Tokens
+        # 4. Piga Validation ya Kawaida ya SimpleJWT
         data = super().validate(attrs)
 
-        # 5. Chukua Taarifa za Mtumiaji na Mipangilio kwa Usalama BILA CRASH
-        business = getattr(self.user, 'business', None)
+        # 5. Chukua Taarifa za Mtumiaji na Mipangilio kwa Usalama Mkubwa (Safe Fallbacks)
+        try:
+            business = getattr(self.user, 'business', None)
 
-        data['user_id'] = str(self.user.id)
-        data['username'] = self.user.username
-        data['role'] = getattr(self.user, 'role', 'cashier')
-        data['business_id'] = str(business.id) if business else None
-        data['business_name'] = business.name if business else None
-        data['business_type'] = getattr(business, 'business_type', 'retail') if business else None
-        
-        if business:
-            data['days_left_in_trial'] = business.days_left_in_trial
-            data['has_active_access'] = business.has_active_access
-            data['has_settings_password'] = bool(business.settings_password)
-            data['permissions'] = {
-                'show_profit_to_cashier': business.show_profit_to_cashier,
-                'allow_cashier_debts': business.allow_cashier_debts,
-                'allow_cashier_custom_price': business.allow_cashier_custom_price,
-                'show_buying_price_to_cashier': business.show_buying_price_to_cashier,
-                'show_stock_summary_cards': business.show_stock_summary_cards,
-            }
+            data['user_id'] = str(self.user.id)
+            data['username'] = self.user.username
+            data['role'] = getattr(self.user, 'role', 'owner')
+            data['business_id'] = str(business.id) if business else None
+            data['business_name'] = business.name if business else None
+            data['business_type'] = getattr(business, 'business_type', 'retail') if business else None
             
+            if business:
+                data['days_left_in_trial'] = getattr(business, 'days_left_in_trial', 30)
+                data['has_active_access'] = getattr(business, 'has_active_access', True)
+                data['has_settings_password'] = bool(getattr(business, 'settings_password', None))
+                data['permissions'] = {
+                    'show_profit_to_cashier': getattr(business, 'show_profit_to_cashier', False),
+                    'allow_cashier_debts': getattr(business, 'allow_cashier_debts', True),
+                    'allow_cashier_custom_price': getattr(business, 'allow_cashier_custom_price', True),
+                    'show_buying_price_to_cashier': getattr(business, 'show_buying_price_to_cashier', False),
+                    'show_stock_summary_cards': getattr(business, 'show_stock_summary_cards', True),
+                }
+        except Exception as e:
+            print(f"Error appending user login extra data: {e}")
+
         return data
 
 
@@ -239,16 +242,14 @@ class BillingStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Hakikisha trial_end_date ipo sahihi (siku 30 tangu tarehe ya usajili wa duka)
         if not business.trial_end_date and business.trial_start_date:
             business.trial_end_date = business.trial_start_date + timedelta(days=30)
             business.save()
 
-        # Tumia property ya Model kukotoa siku halisi kulingana na tarehe ya leo
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': business.days_left_in_trial,  # Imesomwa moja kwa moja kutoka kwenye Model
-            'has_active_access': business.has_active_access,
+            'days_left_in_trial': getattr(business, 'days_left_in_trial', 30),
+            'has_active_access': getattr(business, 'has_active_access', True),
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,
             'subscription_end_date': business.subscription_end_date,
@@ -312,7 +313,7 @@ class ResetSettingsPasswordView(APIView):
             new_pwd = serializer.validated_data['new_settings_password']
             business.set_settings_password(new_pwd)
             business.save()
-            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": "Nenosiri la Mipangilio limebadilishwa kikamilifu!"}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -485,31 +486,36 @@ class PesaPalIPNCallbackView(APIView):
         except SubscriptionPayment.DoesNotExist:
             return Response({"status": "FAILED", "detail": "Payment record not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Kama pesapal_tracking_id ipo, kagua status kutoka PesaPal API
+        # KAGUA STATUS YA HAKI KUTOKA PESAPAL KAMA TRACKING ID IPO
+        is_payment_verified = False
         if pesapal_tracking_id:
-            token = get_pesapal_token()
-            if token:
-                status_res = get_pesapal_transaction_status(token, pesapal_tracking_id)
-                
-                # Check status halisi iliyorudishwa na PesaPal V3
-                payment_status = None
-                if status_res and isinstance(status_res, dict):
-                    payment_status = status_res.get('payment_status_description') or status_res.get('status')
+            try:
+                token = get_pesapal_token()
+                if token:
+                    status_res = get_pesapal_transaction_status(token, pesapal_tracking_id)
+                    payment_status = None
+                    if status_res and isinstance(status_res, dict):
+                        payment_status = status_res.get('payment_status_description') or status_res.get('status')
 
-                # Kama malipo SIO 'COMPLETED' (mfano mteja ali-exit, au aliweka PIN makosa), KATA
-                if payment_status != 'COMPLETED':
-                    payment.status = 'FAILED'
-                    payment.pesapal_order_tracking_id = pesapal_tracking_id
-                    payment.save()
-                    return Response({
-                        "status": "FAILED", 
-                        "message": f"Malipo hayajakamilika. Hali: {payment_status or 'CANCELLED/PENDING'}"
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    if payment_status == 'COMPLETED':
+                        is_payment_verified = True
+            except Exception as e:
+                print(f"Error checking PesaPal Status: {e}")
 
-        # IKIWA HALI HALISI NI 'COMPLETED' NDIIPO UONGEZE SIKU 30
+        # Kama malipo HAIJAKAMILIKA au mtumiaji ame-exit/cancel:
+        if not is_payment_verified:
+            payment.status = 'FAILED'
+            if pesapal_tracking_id:
+                payment.pesapal_order_tracking_id = pesapal_tracking_id
+            payment.save()
+            return Response({
+                "status": "FAILED", 
+                "message": "Malipo hayajathibitishwa na PesaPal au mchakato ulisitishwa."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # KAMA MALIPO YAMETHIBITISHWA NA PESAPAL (COMPLETED):
         payment.status = 'COMPLETED'
-        if pesapal_tracking_id:
-            payment.pesapal_order_tracking_id = pesapal_tracking_id
+        payment.pesapal_order_tracking_id = pesapal_tracking_id
         payment.save()
 
         business = payment.business
