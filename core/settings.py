@@ -1,5 +1,9 @@
 import os
+import dj_database_url
 from pathlib import Path
+
+# 1. Base Directory
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 2. Security & Environment Setup
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ea66!!^77ts$v82)m-bfhqm#i2ea((&@^kz73gcyfwu1s$-5n@')
@@ -22,7 +26,16 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
-# Mipangilio ya Kutuma Email (Selguudi POS)
+# 3. Database Setup (Inasoma DATABASE_URL kutoka Render na SQLite kama Fallback)
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL', f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
+
+# 4. Mipangilio ya Kutuma Email (Selguudi POS)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
