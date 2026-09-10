@@ -5,4 +5,4 @@ class AccountsConfig(AppConfig):
     name = 'accounts'
 
     def ready(self):
-        import accounts.signals  # Fanya import ya signals wakati app inaanza
+        import accounts.signals
