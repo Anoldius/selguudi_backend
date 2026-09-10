@@ -3,12 +3,12 @@ from django.core.mail import send_mail
 from django.dispatch import receiver
 from django_rest_passwordreset.signals import (
     reset_password_token_created,
-    post_password_reset_token_confirm
+    post_password_reset
 )
 
 logger = logging.getLogger(__name__)
 
-# 1. Signal ya Kutuma Email yenye Token/Link
+# 1. Signal ya Kutuma Barua Pepe yenye Token / Link
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
     frontend_url = "https://selguudi.co.tz/reset-password"
@@ -50,12 +50,12 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
         logger.error(f"Failed to send password reset email to {recipient_email}: {str(e)}")
 
 
-# 2. SIGNAL HII NDIYO INAYO-SET NA KU-SAVE PASSWORD MPYA KWENYE CUSTOM USER MODEL
-@receiver(post_password_reset_token_confirm)
-def post_password_reset_token_confirm_callback(sender, user, *args, **kwargs):
+# 2. SIGNAL RASMI YA KUHIFADHI USER POST PASSWORD RESET
+@receiver(post_password_reset)
+def post_password_reset_callback(sender, user, *args, **kwargs):
     """
-    Inatekeleza set_password na save() kwenye Custom User Model
-    ili password mpya iweze kuhashwa kikamilifu kwenye PostgreSQL.
+    Signal hii inatokea mara tu mtu anapofanikiwa ku-confirm reset.
+    Inahakikisha mabadiliko ya user yanahifadhiwa vyema database.
     """
     user.save()
-    logger.info(f"Password updated and saved successfully for user: {user.username}")
+    logger.info(f"Password reset confirmed and saved for user: {user.username}")
