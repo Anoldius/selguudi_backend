@@ -8,10 +8,10 @@ logger = logging.getLogger(__name__)
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
-    # Weka Resend API key
     resend.api_key = os.environ.get('RESEND_API_KEY')
 
-    frontend_url = "https://selguudi-frontend-git-main-anoldius1.vercel.app/reset-password"
+    # Tumia domain yako rasmi ya selguudi.co.tz
+    frontend_url = "https://selguudi.co.tz/reset-password"
     reset_url = f"{frontend_url}?token={reset_password_token.key}"
 
     recipient_email = reset_password_token.user.email
@@ -35,7 +35,6 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
     """
 
     try:
-        # Tuma email kupitia Resend HTTP API
         resend.Emails.send({
             "from": "Selguudi POS <onboarding@resend.dev>",
             "to": [recipient_email],

@@ -194,3 +194,13 @@ PESAPAL_CONSUMER_KEY = '0WpCyXo0ZATT6C01TF2NrIWnZmSO1jo1'
 PESAPAL_CONSUMER_SECRET = 'XyRKYOrTCCFtWmNnNPXW/A8QRc0='
 PESAPAL_BASE_URL = 'https://pay.pesapal.com/v3'
 PESAPAL_IPN_ID = ''  # Backend inaisajili kiotomatiki ikiwa tupu
+
+
+# Email Configuration (Selguudi POS - Gmail SMTP)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'selguudipos@gmail.com'
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = 'Selguudi POS <selguudipos@gmail.com>'
