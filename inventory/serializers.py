@@ -25,9 +25,9 @@ class CategorySerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+# 2. Serializer ya Bidhaa (Product) - FIX HAPA
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.ReadOnlyField(source='category.name', default=None)
-    buying_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -38,23 +38,39 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_buying_price(self, obj):
+    def validate_barcode(self, value):
+        if value is not None and value.strip() == '':
+            return None
+        return value
+
+    def to_representation(self, instance):
         """
-        Boss (Owner) anaona bei halisi ya mtaji wakati wote.
-        Cashier ataona 0.0 PEKEE kama toggle ya show_buying_price_to_cashier ipo OFF.
+        Dhibiti nini kinaonyeshwa wakati wa kusoma (GET Request):
+        - Owner anaona bei ya mtaji siku zote.
+        - Cashier ataona 0.0 kama toggle ya show_buying_price_to_cashier ipo OFF.
         """
+        data = super().to_representation(instance)
         request = self.context.get('request')
+
         if request and hasattr(request, 'user'):
             user = request.user
             role = getattr(user, 'role', 'cashier')
             business = getattr(user, 'business', None)
 
-            # Boss (Owner) aonyeshwe bei halisi siku zote
-            if role == 'owner':
-                return obj.buying_price
+            # Kama ni Cashier na toggle ipo OFF, fanya buying_price iwe 0.0
+            if role != 'owner' and business and not getattr(business, 'show_buying_price_to_cashier', False):
+                data['buying_price'] = 0.0
 
-            # Kama ni Cashier na toggle ya Mipangilio ipo OFF, rejesha 0.0
-            if business and not getattr(business, 'show_buying_price_to_cashier', False):
-                return 0.0
+        return data
 
-        return obj.buying_price
+    def create(self, validated_data):
+        user = self.context['request'].user
+        user_business = getattr(user, 'business', None)
+        
+        if not user_business:
+            raise serializers.ValidationError({
+                "detail": "Mtumiaji huyu hajahusianishwa na duka/biashara yoyote!"
+            })
+            
+        validated_data['business'] = user_business
+        return super().create(validated_data)
