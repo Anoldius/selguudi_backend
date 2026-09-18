@@ -102,7 +102,7 @@ class SubscriptionPayment(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='payments')
     merchant_reference = models.CharField(max_length=100, unique=True)
     pesapal_order_tracking_id = models.CharField(max_length=100, blank=True, null=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, default=20000.00)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=1000.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     payment_method = models.CharField(max_length=50, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)  # <--- Hapa ilikuwa imeandikwa auto_auto_add

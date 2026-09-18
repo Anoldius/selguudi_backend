@@ -430,7 +430,7 @@ class InitiateSubscriptionPaymentView(APIView):
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
-            amount=20000.00,
+            amount=1000.00,
             status='PENDING'
         )
 
@@ -449,7 +449,7 @@ class InitiateSubscriptionPaymentView(APIView):
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
-            "amount": 20000.00,
+            "amount": 1000.00,
             "description": f"Subscription ya Selguudi POS - {business.name[:20]}",
             "callback_url": f"https://selguudi-frontend.vercel.app/billing/success?merchant_ref={merchant_ref}",
             "notification_id": ipn_id if ipn_id else None,
