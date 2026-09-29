@@ -26,7 +26,7 @@ class Business(models.Model):
     allow_cashier_debts = models.BooleanField(default=True)
     allow_cashier_custom_price = models.BooleanField(default=True)
     show_buying_price_to_cashier = models.BooleanField(default=False)
-    show_stock_summary_cards = models.BooleanField(default=False)  # <--- FIELD MPYA HAPA
+    show_stock_summary_cards = models.BooleanField(default=False)
 
     # NENOSIRI MAALUM LA SETTINGS (SETTINGS PASSCODE - HASHED)
     settings_password = models.CharField(max_length=128, blank=True, null=True)
@@ -43,8 +43,8 @@ class Business(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.trial_end_date:
-            # Weka siku 30 za trial wakati wa usajili
-            self.trial_end_date = self.trial_start_date + timedelta(days=30)
+            # Weka siku 7 za trial wakati wa usajili (imebadilishwa kutoka siku 30)
+            self.trial_end_date = self.trial_start_date + timedelta(days=7)
         super().save(*args, **kwargs)
 
     @property
@@ -70,7 +70,7 @@ class Business(models.Model):
         """Inakagua kama bado yupo kwenye Trial au amelipia Subscription"""
         now = timezone.now()
 
-        # 1. Bado yupo ndani ya Siku 30 za trial
+        # 1. Bado yupo ndani ya Siku 7 za trial
         if self.trial_end_date and now <= self.trial_end_date:
             return True
 
@@ -98,15 +98,21 @@ class SubscriptionPayment(models.Model):
         ('FAILED', 'Failed'),
     )
 
+    PLAN_CHOICES = (
+        ('MONTHLY', 'Monthly Plan'),
+        ('ANNUAL', 'Annual Plan'),
+    )
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='payments')
     merchant_reference = models.CharField(max_length=100, unique=True)
     pesapal_order_tracking_id = models.CharField(max_length=100, blank=True, null=True)
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='MONTHLY')
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=20000.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     payment_method = models.CharField(max_length=50, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)  # <--- Hapa ilikuwa imeandikwa auto_auto_add
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.business.name} - {self.amount} TZS ({self.status})"
+        return f"{self.business.name} - {self.amount} TZS [{self.plan}] ({self.status})"

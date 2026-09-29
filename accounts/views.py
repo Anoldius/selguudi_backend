@@ -131,26 +131,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         username = attrs.get('username', '').strip()
         password = attrs.get('password', '')
 
-        # 1. Tafuta Mtumiaji kwenye Database
         try:
             user_obj = User.objects.get(username__iexact=username)
         except User.DoesNotExist:
             raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
 
-        # 2. ZUIA MOJA KWA MOJA KAMA AKAUNTI HAIPO HAI (is_active = False)
         if not getattr(user_obj, 'is_active', True):
             raise serializers.ValidationError({
                 "detail": "Akaunti hii imezimwa/imefutwa na Bosi. Hauna ruhusa ya kuingia kwenye mfumo."
             })
 
-        # 3. Hakiki Password
         if not user_obj.check_password(password):
             raise serializers.ValidationError({"detail": "Username au Password si sahihi."})
 
-        # 4. Piga Validation ya Kawaida ya SimpleJWT
         data = super().validate(attrs)
 
-        # 5. Chukua Taarifa za Mtumiaji na Mipangilio kwa Usalama Mkubwa (Safe Fallbacks)
         try:
             business = getattr(self.user, 'business', None)
 
@@ -162,7 +157,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data['business_type'] = getattr(business, 'business_type', 'retail') if business else None
             
             if business:
-                data['days_left_in_trial'] = getattr(business, 'days_left_in_trial', 30)
+                # Siku za Trial zimepunguzwa kutoka 30 kuwa 7
+                data['days_left_in_trial'] = getattr(business, 'days_left_in_trial', 7)
                 data['has_active_access'] = getattr(business, 'has_active_access', True)
                 data['has_settings_password'] = bool(getattr(business, 'settings_password', None))
                 data['permissions'] = {
@@ -242,18 +238,20 @@ class BillingStatusView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Sehemu ya Trial imebadilishwa kuwa siku 7
         if not business.trial_end_date and business.trial_start_date:
-            business.trial_end_date = business.trial_start_date + timedelta(days=30)
+            business.trial_end_date = business.trial_start_date + timedelta(days=7)
             business.save()
 
         payload = {
             'business_name': business.name,
-            'days_left_in_trial': getattr(business, 'days_left_in_trial', 30),
+            'days_left_in_trial': getattr(business, 'days_left_in_trial', 7),
             'has_active_access': getattr(business, 'has_active_access', True),
             'trial_start_date': business.trial_start_date,
             'trial_end_date': business.trial_end_date,
             'subscription_end_date': business.subscription_end_date,
-            'monthly_amount': 20000.00
+            'monthly_amount': 20000.00,
+            'annual_amount': 200000.00
         }
 
         serializer = BillingStatusSerializer(payload)
@@ -418,6 +416,16 @@ class InitiateSubscriptionPaymentView(APIView):
         if not business:
             return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Kagua mpango wa malipo ('MONTHLY' au 'ANNUAL')
+        plan = request.data.get('plan', 'MONTHLY').upper()
+        if plan == 'ANNUAL':
+            amount = 200000.00
+            plan_label = "Mwaka Mzima"
+        else:
+            plan = 'MONTHLY'
+            amount = 20000.00
+            plan_label = "Mwezi 1"
+
         merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
 
         token = get_pesapal_token()
@@ -430,7 +438,8 @@ class InitiateSubscriptionPaymentView(APIView):
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
-            amount=20000.00,
+            amount=amount,
+            plan=plan if hasattr(SubscriptionPayment, 'plan') else 'MONTHLY',
             status='PENDING'
         )
 
@@ -449,8 +458,8 @@ class InitiateSubscriptionPaymentView(APIView):
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
-            "amount": 20000.00,
-            "description": f"Subscription ya Selguudi POS - {business.name[:20]}",
+            "amount": amount,
+            "description": f"Subscription ya Selguudi POS ({plan_label}) - {business.name[:20]}",
             "callback_url": f"https://selguudi-frontend.vercel.app/billing/success?merchant_ref={merchant_ref}",
             "notification_id": ipn_id if ipn_id else None,
             "billing_address": {
@@ -486,7 +495,6 @@ class PesaPalIPNCallbackView(APIView):
         except SubscriptionPayment.DoesNotExist:
             return Response({"status": "FAILED", "detail": "Payment record not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # KAGUA STATUS YA HAKI KUTOKA PESAPAL KAMA TRACKING ID IPO
         is_payment_verified = False
         if pesapal_tracking_id:
             try:
@@ -502,7 +510,6 @@ class PesaPalIPNCallbackView(APIView):
             except Exception as e:
                 print(f"Error checking PesaPal Status: {e}")
 
-        # Kama malipo HAIJAKAMILIKA au mtumiaji ame-exit/cancel:
         if not is_payment_verified:
             payment.status = 'FAILED'
             if pesapal_tracking_id:
@@ -522,7 +529,14 @@ class PesaPalIPNCallbackView(APIView):
         now = timezone.now()
         start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now
 
-        business.subscription_end_date = start_from + timedelta(days=30)
+        # Kokotoa siku za kuongeza kulingana na kiasi/mpango uliolipwa (Annual = 365 days, Monthly = 30 days)
+        paid_amount = float(payment.amount)
+        if paid_amount >= 200000.00 or getattr(payment, 'plan', '') == 'ANNUAL':
+            duration_days = 365
+        else:
+            duration_days = 30
+
+        business.subscription_end_date = start_from + timedelta(days=duration_days)
         business.is_active_subscription = True
         business.save()
 

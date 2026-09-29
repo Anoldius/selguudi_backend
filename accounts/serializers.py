@@ -36,7 +36,6 @@ class RegisterBusinessSerializer(serializers.ModelSerializer):
         ]
 
     def validate_owner_username(self, value):
-        # Kagua tu watumiaji walio active au wenye username hiyo hiyo
         if User.objects.filter(username__iexact=value, is_active=True).exists():
             raise serializers.ValidationError("Username hii tayari inatumiwa. Tafadhali chagua username nyingine.")
         return value
@@ -76,7 +75,6 @@ class CreateCashierSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'role']
 
     def validate_username(self, value):
-        # Kagua kama username inatumiwa na akaunti iliyo hai (is_active=True)
         if User.objects.filter(username__iexact=value, is_active=True).exists():
             raise serializers.ValidationError("Username hii tayari imeshatumika. Chagua username nyingine.")
         return value
@@ -127,7 +125,8 @@ class BillingStatusSerializer(serializers.Serializer):
     trial_start_date = serializers.DateTimeField()
     trial_end_date = serializers.DateTimeField()
     subscription_end_date = serializers.DateTimeField(allow_null=True)
-    monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    monthly_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=20000.00)
+    annual_amount = serializers.DecimalField(max_digits=10, decimal_places=2, default=200000.00) # <--- HAPA IMEONGEZWA
 
 
 # 6. SERIALIZER YA KUHAKIKI NENOSIRI MAALUM LA SETTINGS (VERIFY SETTINGS PASSCODE)
@@ -204,3 +203,13 @@ class BusinessPermissionsSerializer(serializers.ModelSerializer):
 
     def get_has_settings_password(self, obj):
         return bool(obj.settings_password)
+
+
+# 10. SERIALIZER YA SUBSCRIPTION PAYMENT (MPYA)
+class SubscriptionPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPayment
+        fields = [
+            'id', 'merchant_reference', 'pesapal_order_tracking_id',
+            'plan', 'amount', 'status', 'payment_method', 'created_at'
+        ]
