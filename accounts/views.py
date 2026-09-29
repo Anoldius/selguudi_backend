@@ -407,7 +407,6 @@ class DeleteCashierView(APIView):
 # ==========================================
 # 5. PESAPAL INTEGRATION VIEWS
 # ==========================================
-
 class InitiateSubscriptionPaymentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -416,14 +415,15 @@ class InitiateSubscriptionPaymentView(APIView):
         if not business:
             return Response({"error": "Duka halijapatikana."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Kagua mpango wa malipo ('MONTHLY' au 'ANNUAL')
-        plan = request.data.get('plan', 'MONTHLY').upper()
+        # 1. Kagua plan kutoka kwenye request
+        plan = str(request.data.get('plan', 'MONTHLY')).upper()
+        
         if plan == 'ANNUAL':
-            amount = 200000.00
-            plan_label = "Mwaka Mzima"
+            amount = 200000.0
+            plan_label = "Mwaka 1"
         else:
             plan = 'MONTHLY'
-            amount = 20000.00
+            amount = 20000.0
             plan_label = "Mwezi 1"
 
         merchant_ref = f"SEL-{uuid.uuid4().hex[:8].upper()}"
@@ -431,18 +431,23 @@ class InitiateSubscriptionPaymentView(APIView):
         token = get_pesapal_token()
         if not token:
             return Response(
-                {"error": "PesaPal Gateway haijarudisha Token. Hakikisha PESAPAL_CONSUMER_KEY na SECRET zipo sahihi kwenye Environment Variables."}, 
+                {"error": "PesaPal Token error. Hakikisha Credentials zipo sahihi."}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # 2. Hifadhi Payment Record
         payment = SubscriptionPayment.objects.create(
             business=business,
             merchant_reference=merchant_ref,
             amount=amount,
-            plan=plan if hasattr(SubscriptionPayment, 'plan') else 'MONTHLY',
             status='PENDING'
         )
+        
+        if hasattr(payment, 'plan'):
+            payment.plan = plan
+            payment.save()
 
+        # 3. IPN Notification ID
         ipn_id = getattr(settings, 'PESAPAL_IPN_ID', '')
         if not ipn_id:
             ipn_url = getattr(settings, 'PESAPAL_IPN_URL', "https://selguudi-backend.onrender.com/api/auth/billing/pesapal-ipn/")
@@ -453,13 +458,14 @@ class InitiateSubscriptionPaymentView(APIView):
 
         user_phone = getattr(request.user, 'phone', None) or getattr(business, 'phone', None) or "0700000000"
         user_email = request.user.email if getattr(request.user, 'email', None) else "info@selguudi.com"
-        first_name = getattr(request.user, 'first_name', '') or request.user.username
+        first_name = getattr(request.user, 'first_name', '') or request.user.username or "Owner"
 
+        # 4. PesaPal Order Payload (Format Sahihi ya Amount kwa PesaPal)
         order_payload = {
             "id": merchant_ref,
             "currency": "TZS",
-            "amount": amount,
-            "description": f"Subscription ya Selguudi POS ({plan_label}) - {business.name[:20]}",
+            "amount": float(amount),  # Hakikisha ni Float halisi (200000.0 au 20000.0)
+            "description": f"Subscription Selguudi POS ({plan_label}) - {business.name[:15]}",
             "callback_url": f"https://selguudi-frontend.vercel.app/billing/success?merchant_ref={merchant_ref}",
             "notification_id": ipn_id if ipn_id else None,
             "billing_address": {
@@ -477,8 +483,10 @@ class InitiateSubscriptionPaymentView(APIView):
             payment.save()
             return Response({'redirect_url': pesapal_res['redirect_url']}, status=status.HTTP_200_OK)
 
-        return Response({"error": "PesaPal imekataa kutengeneza Order Link. Hakikisha Credentials za PesaPal ziko sahihi."}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Kama imegoma, rudisha exact error kutoka PesaPal ili tuione
+        return Response({
+            "error": f"PesaPal Request Failed: {pesapal_res}"
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 class PesaPalIPNCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
