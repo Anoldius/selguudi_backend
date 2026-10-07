@@ -16,8 +16,9 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ea66!!^77ts$v82)m-bfh
 # Tumia Environment variable Render au zima DEBUG ukiwa Live Production
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
 
-# ALLOWED HOSTS MPYA (Imeongezwa Domain Mpya ya selguudi.co.tz)
+# ALLOWED HOSTS MPYA (Imeongezwa Subdomain Mpya ya api.selguudi.co.tz)
 ALLOWED_HOSTS = [
+    'api.selguudi.co.tz',
     'selguudi.co.tz',
     'www.selguudi.co.tz',
     'selguudi-backend.onrender.com',
@@ -170,9 +171,10 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# CORS Configuration (Imeongezwa Domain Mpya ya selguudi.co.tz)
+# CORS Configuration (Imeongezwa Subdomain Mpya ya api.selguudi.co.tz)
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
+    "https://api.selguudi.co.tz",
     "https://selguudi.co.tz",
     "https://www.selguudi.co.tz",
     "https://selguudi-frontend.vercel.app",
@@ -182,19 +184,17 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://api.selguudi.co.tz",
+    "https://selguudi.co.tz",
+    "https://www.selguudi.co.tz",
+    "https://selguudi-backend.onrender.com",
+    "https://selguudi-frontend.vercel.app",
+    "https://selguudi-frontend-git-main-anoldius1.vercel.app",
+]
+
 CORS_ALLOW_CREDENTIALS = True
-
-# Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
-DEFAULT_FROM_EMAIL = f"Selguudi POS <{EMAIL_HOST_USER}>"
-
-# PesaPal V3 Live Production Settings
-PESAPAL_CONSUMER_KEY = '0WpCyXo0ZATT6C01TF2NrIWnZmSO1jo1'
-PESAPAL_CONSUMER_SECRET = 'XyRKYOrTCCFtWmNnNPXW/A8QRc0='
-PESAPAL_BASE_URL = 'https://pay.pesapal.com/v3'
-PESAPAL_IPN_ID = ''  # Backend inaisajili kiotomatiki ikiwa tupu
-
 
 # Email Configuration (Selguudi POS - Gmail SMTP)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -203,4 +203,10 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'selguudipos@gmail.com'
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = 'Selguudi POS <selguudipos@gmail.com>'
+DEFAULT_FROM_EMAIL = f"Selguudi POS <selguudipos@gmail.com>"
+
+# PesaPal V3 Live Production Settings
+PESAPAL_CONSUMER_KEY = '0WpCyXo0ZATT6C01TF2NrIWnZmSO1jo1'
+PESAPAL_CONSUMER_SECRET = 'XyRKYOrTCCFtWmNnNPXW/A8QRc0='
+PESAPAL_BASE_URL = 'https://pay.pesapal.com/v3'
+PESAPAL_IPN_ID = ''  # Backend inaisajili kiotomatiki ikiwa tupu
