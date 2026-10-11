@@ -8,6 +8,7 @@ from .views import (
     BillingStatusView,
     InitiateSubscriptionPaymentView,
     PesaPalIPNCallbackView,
+    ManualVerifyPaymentView,
     VerifyPasswordView,
     SetSettingsPasswordView,
     ResetSettingsPasswordView,
@@ -37,4 +38,5 @@ urlpatterns = [
     path('billing/status/', BillingStatusView.as_view(), name='billing_status'),
     path('billing/initiate/', InitiateSubscriptionPaymentView.as_view(), name='initiate_payment'),
     path('billing/pesapal-ipn/', PesaPalIPNCallbackView.as_view(), name='pesapal_ipn'),
+    path('billing/verify-payment/', ManualVerifyPaymentView.as_view(), name='verify_payment'),
 ]

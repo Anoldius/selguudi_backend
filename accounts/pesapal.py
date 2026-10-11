@@ -1,14 +1,16 @@
 import requests
 from django.conf import settings
 
-# Base URL za PesaPal V3
-PESAPAL_BASE_URL = getattr(settings, 'PESAPAL_BASE_URL', 'https://pay.pesapal.com/v3')
+# Base URL na Credentials kutoka Settings
+PESAPAL_BASE_URL = getattr(settings, 'PESAPAL_BASE_URL', 'https://pay.pesapal.com/v3').rstrip('/')
 PESAPAL_KEY = getattr(settings, 'PESAPAL_CONSUMER_KEY', '')
 PESAPAL_SECRET = getattr(settings, 'PESAPAL_CONSUMER_SECRET', '')
+
 
 def get_pesapal_token():
     """Vuta Request Token kutoka PesaPal V3 API"""
     urls_to_try = [
+        f"{PESAPAL_BASE_URL}/api/Auth/RequestToken",
         "https://pay.pesapal.com/v3/api/Auth/RequestToken",
         "https://cyb3rpay.pesapal.com/pesapalv3/api/Auth/RequestToken"
     ]
@@ -19,8 +21,8 @@ def get_pesapal_token():
     }
     
     payload = {
-        "consumer_key": PESAPAL_KEY.strip(),
-        "consumer_secret": PESAPAL_SECRET.strip()
+        "consumer_key": str(PESAPAL_KEY).strip(),
+        "consumer_secret": str(PESAPAL_SECRET).strip()
     }
 
     for url in urls_to_try:
@@ -32,20 +34,20 @@ def get_pesapal_token():
                 if token:
                     return token
             else:
-                print(f"Error from {url}: {response.text}")
+                print(f"PesaPal Token Error from {url} [{response.status_code}]: {response.text}")
         except Exception as e:
-            print(f"Exception from {url}: {e}")
+            print(f"PesaPal Token Exception from {url}: {e}")
 
     return None
 
 
 def register_pesapal_ipn(token, ipn_url=None):
-    """Sajili IPN Webhook URL PesaPal (Inatumia domain mpya)"""
+    """Sajili IPN Webhook URL PesaPal (Inatumia Domain Mpya ya Cloudflare)"""
     if not ipn_url:
-        ipn_url = "https://selguudi-backend.onrender.com/api/accounts/billing/pesapal-ipn/"
+        # Domain mpya rasmi ya Cloudflare backend
+        ipn_url = "https://api.selguudi.co.tz/api/accounts/billing/pesapal-ipn/"
 
-    base_url = "https://pay.pesapal.com/v3"
-    url = f"{base_url}/api/URLSetup/RegisterIPN"
+    url = f"{PESAPAL_BASE_URL}/api/URLSetup/RegisterIPN"
     
     headers = {
         "Authorization": f"Bearer {token}",
@@ -63,19 +65,15 @@ def register_pesapal_ipn(token, ipn_url=None):
         if response.status_code == 200:
             return response.json().get('ipn_id')
         else:
-            print(f"IPN Registration Error: {response.text}")
+            print(f"PesaPal IPN Registration Error [{response.status_code}]: {response.text}")
     except Exception as e:
         print("PesaPal IPN Register Exception:", e)
     return None
 
 
 def submit_pesapal_order(token, order_payload):
-    """Tuma ombi la kutengeneza Link ya Malipo kuenda PesaPal V3"""
-    base_urls = ["https://pay.pesapal.com/v3", "https://cyb3rpay.pesapal.com/pesapalv3"]
-    
-    # Hakikisha callback_url inatumia domain mpya ya selguudi.co.tz
-    if 'callback_url' in order_payload:
-        order_payload['callback_url'] = "https://selguudi.co.tz/billing/success"
+    """Tuma ombi la kutengeneza Link ya Malipo kwenda PesaPal V3"""
+    base_urls = [PESAPAL_BASE_URL, "https://pay.pesapal.com/v3", "https://cyb3rpay.pesapal.com/pesapalv3"]
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -83,15 +81,39 @@ def submit_pesapal_order(token, order_payload):
         "Accept": "application/json"
     }
 
-    for base_url in base_urls:
-        url = f"{base_url}/api/Transactions/SubmitOrderRequest"
+    for base in base_urls:
+        url = f"{base}/api/Transactions/SubmitOrderRequest"
         try:
             response = requests.post(url, json=order_payload, headers=headers, timeout=15)
             if response.status_code == 200:
                 return response.json()
             else:
-                print(f"Submit Order Error from {url}: {response.text}")
+                print(f"Submit Order Error from {url} [{response.status_code}]: {response.text}")
         except Exception as e:
             print(f"Submit Order Exception from {url}: {e}")
+
+    return None
+
+
+def get_pesapal_transaction_status(token, order_tracking_id):
+    """Kagua Hali ya Muamala (Transaction Status) Kutoka PesaPal V3 API"""
+    base_urls = [PESAPAL_BASE_URL, "https://pay.pesapal.com/v3", "https://cyb3rpay.pesapal.com/pesapalv3"]
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
+    for base in base_urls:
+        url = f"{base}/api/Transactions/GetTransactionStatus?orderTrackingId={order_tracking_id}"
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Get Transaction Status Error from {url} [{response.status_code}]: {response.text}")
+        except Exception as e:
+            print(f"Get Transaction Status Exception from {url}: {e}")
 
     return None
