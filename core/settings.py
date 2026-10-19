@@ -205,8 +205,8 @@ EMAIL_HOST_USER = 'selguudipos@gmail.com'
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = f"Selguudi POS <selguudipos@gmail.com>"
 
-# PesaPal V3 Live Production Settings
-PESAPAL_CONSUMER_KEY = '0WpCyXo0ZATT6C01TF2NrIWnZmSO1jo1'
-PESAPAL_CONSUMER_SECRET = 'XyRKYOrTCCFtWmNnNPXW/A8QRc0='
-PESAPAL_BASE_URL = 'https://pay.pesapal.com/v3'
-PESAPAL_IPN_ID = ''  # Backend inaisajili kiotomatiki ikiwa tupu
+# PesaPal V3 Live Production Settings (Inasoma kutoka Environment Variables za Render)
+PESAPAL_CONSUMER_KEY = os.environ.get('PESAPAL_CONSUMER_KEY', '')
+PESAPAL_CONSUMER_SECRET = os.environ.get('PESAPAL_CONSUMER_SECRET', '')
+PESAPAL_BASE_URL = os.environ.get('PESAPAL_BASE_URL', 'https://pay.pesapal.com/v3')
+PESAPAL_IPN_ID = os.environ.get('PESAPAL_IPN_ID', '')
