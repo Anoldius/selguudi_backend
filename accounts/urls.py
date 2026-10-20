@@ -14,7 +14,8 @@ from .views import (
     ResetSettingsPasswordView,
     BusinessPermissionsView,
     ManageCashiersView,   
-    DeleteCashierView     
+    DeleteCashierView,
+    SMSWebhookView      # <-- Imeongezwa hapa
 )
 
 urlpatterns = [
@@ -39,4 +40,7 @@ urlpatterns = [
     path('billing/initiate/', InitiateSubscriptionPaymentView.as_view(), name='initiate_payment'),
     path('billing/pesapal-ipn/', PesaPalIPNCallbackView.as_view(), name='pesapal_ipn'),
     path('billing/verify-payment/', ManualVerifyPaymentView.as_view(), name='verify_payment'),
+    
+    # SMS Gateway Webhook Endpoint (Auto-Activation ya Malipo ya Simu)
+    path('billing/sms-webhook/', SMSWebhookView.as_view(), name='sms_webhook'),
 ]

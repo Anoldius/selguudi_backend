@@ -629,3 +629,104 @@ class ManualVerifyPaymentView(APIView):
                 return Response({'message': 'Malipo yamethibitishwa na duka limekuwa Active kikamilifu!'}, status=status.HTTP_200_OK)
 
         return Response({'error': 'Malipo bado hayajakamilika PesaPal. Tafadhali malizia muamala kwenye simu.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+        # ==========================================
+# 6. SMS GATEWAY WEBHOOK (AUTOMATED SMS LISTENER)
+# ==========================================
+
+class SMSWebhookView(APIView):
+    """
+    Endpoint ya kupokea SMS za malipo kutoka kwenye App ya Android ya SMS Forwarder
+    na ku-activate subscription ya Selguudi POS moja kwa moja.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        # 1. Kagua Secret Key kwa usalama wa Endpoint
+        secret_header = request.headers.get('X-SMS-Secret') or request.data.get('secret')
+        expected_secret = getattr(settings, 'SMS_WEBHOOK_SECRET', 'SELGUUDI_SECURE_SMS_KEY_2026')
+        
+        if secret_header != expected_secret:
+            return Response({"error": "Unauthorized: Invalid Secret Key"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        sms_body = request.data.get('message', '') or request.data.get('text', '')
+        sender_id = request.data.get('sender', '') or request.data.get('from', '')
+
+        # 2. Hakikisha SMS inatoka kwa Kampuni za Simu halali
+        valid_senders = ['M-PESA', 'TIGOPESA', 'TIGO', 'AIRTEL', 'AIRTELMONEY', 'HALOPESA', 'SELCOM']
+        if sender_id and not any(valid in sender_id.upper() for valid in valid_senders):
+            return Response({"status": "Ignored", "reason": "SMS sio ya muamala wa fedha"}, status=status.HTTP_200_OK)
+
+        if not sms_body:
+            return Response({"error": "SMS body iko tupu"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Vuta Transaction ID, Kiasi, na Namba ya Simu kwa kutumia Regex
+        tx_match = re.search(r'\b([A-Z0-9]{8,12})\b', sms_body)
+        amount_match = re.search(r'(?:TZS|TSH|TSH\.|Tsh)\s*([\d,]+(?:\.\d{2})?)', sms_body, re.IGNORECASE)
+        phone_match = re.search(r'(255\d{9}|0[67]\d{8})', sms_body)
+
+        if not (tx_match and amount_match and phone_match):
+            return Response({
+                "status": "Ignored", 
+                "reason": "Haikuweza kuchukua maelezo ya muamala vizuri kutoka kwenye SMS"
+            }, status=status.HTTP_200_OK)
+
+        transaction_id = tx_match.group(1).upper()
+        raw_amount = amount_match.group(1).replace(',', '')
+        try:
+            amount = float(raw_amount)
+        except ValueError:
+            amount = 0.0
+
+        raw_phone = phone_match.group(1)
+        clean_phone = '0' + raw_phone[-9:]
+
+        # 4. Kagua kama Kiasi kilichotumwa kinatimiza angalau gharama ya mwezi (TZS 20,000)
+        if amount < 20000:
+            return Response({
+                "status": "Ignored", 
+                "reason": f"Kiasi kilichopokelewa (TZS {amount}) ni chini ya gharama ya mwezi (TZS 20,000)"
+            }, status=status.HTTP_200_OK)
+
+        # 5. Tafuta Duka linalohusika kupitia Namba ya Simu
+        business = Business.objects.filter(phone__endswith=clean_phone[-9:]).first()
+        
+        if not business:
+            return Response({
+                "status": "Ignored", 
+                "reason": f"Namba {clean_phone} haijasajiliwa kwenye duka lolote la Selguudi POS"
+            }, status=status.HTTP_200_OK)
+
+        # 6. Kuzuia Transaction ID Moja Kutumika Mara Mbili
+        if SubscriptionPayment.objects.filter(merchant_reference=transaction_id).exists():
+            return Response({
+                "status": "Ignored", 
+                "reason": f"Muamala {transaction_id} ulishachakatwa tayari"
+            }, status=status.HTTP_200_OK)
+
+        # 7. Washa Subscription ya Duka (Auto-Activation)
+        now = timezone.now()
+        start_from = business.subscription_end_date if (business.subscription_end_date and business.subscription_end_date > now) else now
+
+        # Angalia kama ni ya mwaka au mwezi kutokana na kiasi (Mfano kiasi cha 200k+ ni Annual)
+        duration_days = 365 if amount >= 200000.0 else 30
+
+        business.subscription_end_date = start_from + timedelta(days=duration_days)
+        business.is_active_subscription = True
+        business.save()
+
+        # 8. Hifadhi Kumbukumbu ya Malipo
+        SubscriptionPayment.objects.create(
+            business=business,
+            merchant_reference=transaction_id,
+            amount=amount,
+            status='COMPLETED',
+            payment_method=sender_id or 'MOBILE_MONEY_SMS'
+        )
+
+        return Response({
+            "status": "Success",
+            "message": f"Duka la '{business.name}' limewashwa kikamilifu hadi {business.subscription_end_date.strftime('%Y-%m-%d')}!"
+        }, status=status.HTTP_200_OK)

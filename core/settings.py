@@ -210,3 +210,6 @@ PESAPAL_CONSUMER_KEY = os.environ.get('PESAPAL_CONSUMER_KEY', '')
 PESAPAL_CONSUMER_SECRET = os.environ.get('PESAPAL_CONSUMER_SECRET', '')
 PESAPAL_BASE_URL = os.environ.get('PESAPAL_BASE_URL', 'https://pay.pesapal.com/v3')
 PESAPAL_IPN_ID = os.environ.get('PESAPAL_IPN_ID', '')
+
+# SMS Gateway Secret Key kwa ajili ya usalama wa Webhook ya Malipo ya Simu
+SMS_WEBHOOK_SECRET = os.environ.get('SMS_WEBHOOK_SECRET', 'SELGUUDI_SECURE_SMS_KEY_2026')
