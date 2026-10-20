@@ -245,8 +245,12 @@ class BillingStatusView(APIView):
             business.trial_end_date = business.trial_start_date + timedelta(days=7)
             business.save()
 
+        # Vuta namba ya simu kutoka kwenye Business au User aliyeingia
+        store_phone = getattr(business, 'phone', None) or getattr(user, 'phone', None) or "07XXXXXXXX"
+
         payload = {
             'business_name': business.name,
+            'phone': store_phone,  # <-- Hapa ndipo tunaituma namba kwenda Frontend
             'days_left_in_trial': getattr(business, 'days_left_in_trial', 7),
             'has_active_access': getattr(business, 'has_active_access', True),
             'trial_start_date': business.trial_start_date,
@@ -256,8 +260,7 @@ class BillingStatusView(APIView):
             'annual_amount': 200000.00
         }
 
-        serializer = BillingStatusSerializer(payload)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 # ==========================================
